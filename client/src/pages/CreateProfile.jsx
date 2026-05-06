@@ -1,3 +1,16 @@
+/**
+ * CreateProfile Page Component
+ * UPDATED: May 6, 2026 - Design System Enhancement
+ * 
+ * Features:
+ * - Freelancer profile creation form
+ * - Skills input with validation
+ * - Hourly rate configuration
+ * - Professional headline setup
+ * - Form validation and error handling
+ * - Modern styling with custom design system
+ */
+
 import React, { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
@@ -23,7 +36,9 @@ const ProfileTextArea = ({ name, label, value, onChange, placeholder }) => (
 const CreateProfile = () => {
     const [formData, setFormData] = useState({
         skills: '', rate: '', bio: '', portfolio: '',
-        services: '', education: '', achievements: '' // Added new fields
+        services: '', education: '', achievements: '', // Added new fields
+        locationText: '',
+        geo: null
     });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -45,11 +60,13 @@ const CreateProfile = () => {
                         // --- Pre-fill new fields ---
                         services: (res.data.services || []).join(', '),
                         education: (res.data.education || []).join(', '),
-                        achievements: (res.data.achievements || []).join(', ')
+                        achievements: (res.data.achievements || []).join(', '),
+                        locationText: res.data.locationText || '',
+                        geo: res.data.geo || null
                     });
                     setIsEditMode(true);
                 }
-            } catch (err) {
+            } catch {
                 console.log("No existing profile found, creating a new one.");
             } finally {
                 setLoading(false);
@@ -58,8 +75,27 @@ const CreateProfile = () => {
         fetchProfile();
     }, []);
 
-    const { skills, rate, bio, portfolio, services, education, achievements } = formData;
+    const { skills, rate, bio, portfolio, services, education, achievements, locationText, geo } = formData;
     const onChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+    const captureLocation = () => {
+        setError('');
+        if (!navigator.geolocation) {
+            setError('Geolocation is not supported by your browser.');
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { latitude, longitude } = pos.coords;
+                setFormData((prev) => ({
+                    ...prev,
+                    geo: { type: 'Point', coordinates: [longitude, latitude] }
+                }));
+            },
+            () => setError('Unable to fetch your location. Please allow location access and try again.'),
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    };
 
     const onSubmit = async (e) => {
         e.preventDefault();
@@ -131,6 +167,36 @@ const CreateProfile = () => {
                     <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">About You (Bio)</label>
                     <textarea id="bio" name="bio" rows="5" value={bio} onChange={onChange} className="w-full p-3 border rounded-md" placeholder="Tell clients a bit about your experience..."></textarea>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2">
+                        <label htmlFor="locationText" className="block text-sm font-medium text-gray-700 mb-1">Location (for hyperlocal search)</label>
+                        <input
+                            type="text"
+                            id="locationText"
+                            name="locationText"
+                            value={locationText}
+                            onChange={onChange}
+                            className="w-full p-3 border rounded-md"
+                            placeholder="e.g., Meerut, Uttar Pradesh"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Optional, but recommended so clients nearby can find you.</p>
+                    </div>
+                    <div className="flex items-end">
+                        <button
+                            type="button"
+                            onClick={captureLocation}
+                            className="w-full bg-gray-900 text-white py-3 px-4 rounded-md hover:bg-black"
+                        >
+                            Use my GPS
+                        </button>
+                    </div>
+                </div>
+                {geo?.coordinates?.length === 2 && (
+                    <p className="text-xs text-gray-500">
+                        Saved GPS: {Number(geo.coordinates[1]).toFixed(5)}, {Number(geo.coordinates[0]).toFixed(5)}
+                    </p>
+                )}
 
                 {/* --- NEW FIELDS ADDED --- */}
                 <ProfileTextArea name="services" label="Services You Offer" value={services} onChange={onChange} placeholder="e.g., Web Development, UI/UX Design" />

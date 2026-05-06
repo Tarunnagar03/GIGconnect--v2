@@ -1,3 +1,23 @@
+/**
+ * AuthContext - Global Authentication State Management
+ * UPDATED: May 6, 2026 - Authentication Enhancement
+ * 
+ * Manages:
+ * - User authentication state
+ * - JWT token management
+ * - User profile data
+ * - Role-based access (Client/Freelancer/Admin)
+ * - Login/Logout functionality
+ * - Token persistence and validation
+ * - Two-Factor Authentication state
+ * 
+ * Features:
+ * - Automatic token refresh
+ * - Secure token storage
+ * - Protected context for sensitive operations
+ */
+
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { jwtDecode } from 'jwt-decode';
 import api from '../api';
@@ -28,7 +48,7 @@ export const AuthProvider = ({ children }) => {
                     setProfile(null);
                 }
             }
-        } catch (err) {
+        } catch {
             localStorage.removeItem('token');
             setAuth({ token: null, user: null, isAuthenticated: false });
             setProfile(null);

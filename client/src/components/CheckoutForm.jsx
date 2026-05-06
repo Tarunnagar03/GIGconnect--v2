@@ -1,7 +1,21 @@
+/**
+ * CheckoutForm Component
+ * UPDATED: May 6, 2026 - Stripe Payment UI Enhancement
+ * 
+ * Features:
+ * - Stripe payment element integration
+ * - Secure payment processing
+ * - Loading states during payment
+ * - Error handling and display
+ * - Modern checkout UI
+ * - Payment confirmation
+ */
+
 import React, { useState } from 'react';
 import { PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import api from '../api';
 
-const CheckoutForm = () => {
+const CheckoutForm = ({ onSuccess }) => {
     const stripe = useStripe();
     const elements = useElements();
     const [message, setMessage] = useState(null);
@@ -13,17 +27,24 @@ const CheckoutForm = () => {
 
         setIsProcessing(true);
 
-        const { error } = await stripe.confirmPayment({
+        const { error, paymentIntent } = await stripe.confirmPayment({
             elements,
-            confirmParams: {
-                return_url: `${window.location.origin}/dashboard`, // Where to redirect after payment
-            },
+            redirect: 'if_required',
         });
 
         if (error) {
             setMessage(error.message);
+        } else if (paymentIntent?.status === 'succeeded') {
+            // Confirm with backend (fallback when webhook isn't configured in dev)
+            try {
+                await api.post('/payments/confirm-payment-intent', { paymentIntentId: paymentIntent.id });
+            } catch (err) {
+                console.error(err);
+            }
+            setMessage(null);
+            onSuccess?.(paymentIntent);
         } else {
-            setMessage("An unexpected error occurred.");
+            setMessage(`Payment status: ${paymentIntent?.status || 'unknown'}`);
         }
 
         setIsProcessing(false);

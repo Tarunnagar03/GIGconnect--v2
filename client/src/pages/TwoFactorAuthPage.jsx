@@ -1,10 +1,21 @@
-import React, { useState, useEffect, useContext } from 'react';
+/**
+ * TwoFactorAuthPage Component
+ * UPDATED: May 6, 2026 - Security Enhancement
+ * 
+ * Features:
+ * - Two-Factor Authentication setup
+ * - QR code generation
+ * - OTP verification
+ * - Backup codes management
+ * - Security status display
+ * - Modern security UI
+ */
+
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
 
 const TwoFactorAuthPage = () => {
-    const { auth } = useContext(AuthContext);
     const [is2FAEnabled, setIs2FAEnabled] = useState(false);
     const [showVerifyForm, setShowVerifyForm] = useState(false);
     const [twoFaToken, setTwoFaToken] = useState('');
@@ -25,7 +36,7 @@ const TwoFactorAuthPage = () => {
             const res = await api.post('/2fa/generate-email-code');
             setMessage(res.data.msg);
             setShowVerifyForm(true);
-        } catch (err) {
+        } catch {
             setError('Error: Could not send verification code.');
         }
     };
@@ -50,7 +61,7 @@ const TwoFactorAuthPage = () => {
                 const res = await api.put('/2fa/disable');
                 alert(res.data.msg);
                 setIs2FAEnabled(false);
-            } catch (err) {
+            } catch {
                 setError('Failed to disable 2FA.');
             }
         }

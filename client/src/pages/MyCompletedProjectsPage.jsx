@@ -1,3 +1,16 @@
+/**
+ * MyCompletedProjectsPage Component
+ * UPDATED: May 6, 2026 - Project History Enhancement
+ * 
+ * Features:
+ * - View completed projects/gigs
+ * - Project details and status
+ * - Client/Freelancer information
+ * - Rating and review display
+ * - Filter and sort options
+ * - Professional layout with modern design
+ */
+
 import React, { useState, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
@@ -16,14 +29,6 @@ const MyCompletedProjectsPage = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Fetch completed gigs and reviews simultaneously
-                const [gigsRes, reviewsRes] = await Promise.all([
-                    api.get('/gigs/my-assigned-gigs'),
-                    api.get(`/reviews/me/my-reviews`) // This is the client's reviews, let's get freelancer's reviews
-                    // We'll use the freelancer's public profile review endpoint
-                ]);
-
-                // This logic is slightly complex, let's simplify
                 // We'll fetch assigned gigs and reviews FOR the freelancer
                 const assignedGigs = await api.get('/gigs/my-assigned-gigs');
                 const freelancerReviews = await api.get(`/reviews/${auth.user.id}`); // Get reviews *for* me

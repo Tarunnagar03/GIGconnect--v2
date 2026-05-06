@@ -1,6 +1,94 @@
+/**
+ * Global Styles and Design System
+ * UPDATED: May 6, 2026 - Modern Design Enhancement
+ * 
+ * Changes Made:
+ * - Imported professional fonts (Inter, Poppins) from Google Fonts
+ * - Added custom component classes (.gc-card, .gc-btn-primary, etc.)
+ * - Enhanced scrollbar styling with custom colors
+ * - Implemented smooth animations (fadeIn, slideUp)
+ * - Added transitions for all interactive elements
+ * - Created utility classes for consistent spacing and colors
+ * - Applied modern typography standards for better readability
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html, body {
+    height: 100%;
+  }
+  body {
+    @apply bg-neutral-50 text-neutral-900 antialiased font-sans;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-semibold;
+  }
+}
+
+@layer components {
+  .gc-card {
+    @apply bg-white rounded-xl shadow-soft border border-neutral-200/60 transition-all duration-200 hover:shadow-medium;
+  }
+  .gc-btn {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
+  }
+  .gc-btn-primary {
+    @apply gc-btn bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 shadow-soft hover:shadow-medium;
+  }
+  .gc-btn-secondary {
+    @apply gc-btn bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 active:bg-neutral-100;
+  }
+  .gc-btn-accent {
+    @apply gc-btn bg-accent-500 text-white hover:bg-accent-600 active:bg-accent-700;
+  }
+  .gc-btn-success {
+    @apply gc-btn bg-secondary-500 text-white hover:bg-secondary-600 active:bg-secondary-700;
+  }
+  .gc-input {
+    @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 outline-none transition-colors duration-200 focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 placeholder:text-neutral-400;
+  }
+  .gc-textarea {
+    @apply gc-input resize-none;
+  }
+  .gc-select {
+    @apply gc-input cursor-pointer;
+  }
+  .gc-label {
+    @apply block text-sm font-medium text-neutral-700 mb-1;
+  }
+  .gc-section {
+    @apply py-16 px-4;
+  }
+  .gc-container {
+    @apply max-w-7xl mx-auto;
+  }
+  .gc-gradient-bg {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+  .gc-hero-bg {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-neutral-100;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-neutral-300 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-neutral-400;
+}
 
 /* Fix for invisible dropdown options */
 option {
@@ -16,4 +104,30 @@ input:-webkit-autofill:active {
     -webkit-box-shadow: 0 0 0 30px white inset !important;
     box-shadow: 0 0 0 30px white inset !important;
     -webkit-text-fill-color: black !important;
+}
+
+/* Loading animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .5;
+  }
+}
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Custom animations */
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+.animate-bounce-subtle {
+  animation: bounceSubtle 2s infinite;
 }

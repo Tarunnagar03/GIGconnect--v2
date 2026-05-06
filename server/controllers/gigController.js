@@ -1,11 +1,51 @@
+/**
+ * Gig Controller
+ * UPDATED: May 6, 2026 - Gig Management Enhancement
+ * 
+ * Manages:
+ * - Gig CRUD operations (Create, Read, Update, Delete)
+ * - Gig search and filtering
+ * - Location-based gig queries (geospatial)
+ * - Gig status management
+ * - Gig proposals and bidding
+ * - Freelancer assignment
+ * - Gig completion handling
+ */
+
 // server/controllers/gigController.js
 const Gig = require('../models/Gig');
 
+function normalizeStringArray(value) {
+    if (!value) return undefined;
+    if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean);
+    if (typeof value === 'string') return value.split(',').map(v => v.trim()).filter(Boolean);
+    return undefined;
+}
+
 // Create a new gig
 exports.createGig = async (req, res) => {
-    const { title, description, budget } = req.body;
+    const { title, description, budget, skills, locationText, geo, milestones } = req.body;
     try {
-        const newGig = new Gig({ title, description, budget, client: req.user.id });
+        const gigPayload = { title, description, budget, client: req.user.id, locationText };
+
+        const skillsArr = normalizeStringArray(skills);
+        if (skillsArr) gigPayload.skills = skillsArr;
+
+        if (geo && typeof geo === 'object') {
+            const lng = Array.isArray(geo.coordinates) ? Number(geo.coordinates[0]) : undefined;
+            const lat = Array.isArray(geo.coordinates) ? Number(geo.coordinates[1]) : undefined;
+            if (Number.isFinite(lng) && Number.isFinite(lat)) {
+                gigPayload.geo = { type: 'Point', coordinates: [lng, lat] };
+            }
+        }
+
+        if (Array.isArray(milestones) && milestones.length) {
+            gigPayload.milestones = milestones
+                .filter(m => m && m.title && Number(m.amount) > 0)
+                .map(m => ({ title: String(m.title), amount: Number(m.amount) }));
+        }
+
+        const newGig = new Gig(gigPayload);
         const gig = await newGig.save();
         res.json(gig);
     } catch (err) {
@@ -29,7 +69,7 @@ exports.getMyGigs = async (req, res) => {
 // Get all gigs with filtering (Filters for 'Open' status)
 exports.getAllGigs = async (req, res) => {
     try {
-        const { keyword, minPrice, maxPrice } = req.query;
+        const { keyword, minPrice, maxPrice, skills, lng, lat, radiusKm } = req.query;
         let query = {};
         const andConditions = [];
 
@@ -46,6 +86,23 @@ exports.getAllGigs = async (req, res) => {
         }
         if (maxPrice) {
             andConditions.push({ budget: { $lte: Number(maxPrice) } });
+        }
+
+        const skillsArr = normalizeStringArray(skills);
+        if (skillsArr?.length) {
+            andConditions.push({ skills: { $in: skillsArr } });
+        }
+
+        const hasGeo = Number.isFinite(Number(lng)) && Number.isFinite(Number(lat)) && Number.isFinite(Number(radiusKm));
+        if (hasGeo) {
+            andConditions.push({
+                geo: {
+                    $near: {
+                        $geometry: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
+                        $maxDistance: Number(radiusKm) * 1000
+                    }
+                }
+            });
         }
 
         // --- ENSURE THIS FILTER IS PRESENT ---

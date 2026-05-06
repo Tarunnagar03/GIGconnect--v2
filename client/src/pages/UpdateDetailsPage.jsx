@@ -1,3 +1,16 @@
+/**
+ * UpdateDetailsPage Component
+ * UPDATED: May 6, 2026 - Profile Management Enhancement
+ * 
+ * Features:
+ * - Update user profile information
+ * - Email and password management
+ * - Personal details editing
+ * - Form validation
+ * - Success/error notifications
+ * - Modern profile UI
+ */
+
 import React, { useState, useContext, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
@@ -43,7 +56,7 @@ const UpdateDetailsPage = () => {
                     headline: user.headline || ''
                 });
             })
-            .catch(err => {
+            .catch(() => {
                 setError('Could not fetch user details.');
             })
             .finally(() => setLoading(false));

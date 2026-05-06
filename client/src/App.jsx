@@ -1,3 +1,21 @@
+/**
+ * App Root Component
+ * UPDATED: May 6, 2026 - Design System & Routing Enhancement
+ * 
+ * Features:
+ * - Complete routing for all application pages
+ * - Private route protection for authenticated users
+ * - Role-based access control (Client/Freelancer/Admin)
+ * - Authentication context integration
+ * - Modern design system applied globally
+ * - Responsive layout for all pages
+ * 
+ * Routes Configured:
+ * - Public: Home, About, Contact, Browse Gigs, Find Freelancers
+ * - Protected: Dashboard, Chat, Inbox, Reviews, Payment
+ * - Admin: Admin Dashboard with user management
+ */
+
 import React, { useContext } from 'react';
 // --- Router is NOT imported here ---
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'; 
@@ -28,6 +46,8 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import ServicesPage from './pages/ServicesPage';
 import ContactPage from './pages/ContactPage';
+import FindFreelancers from './pages/FindFreelancers.jsx';
+import AdminDashboard from './pages/AdminDashboard.jsx';
 
 // --- ALL IMPORTS ARE CORRECTED ---
 import MyCompletedProjectsPage from './pages/MyCompletedProjectsPage';
@@ -48,7 +68,7 @@ function App() {
     return (
         <>
             {!hideNavbar && <Navbar />}
-            <main className="container mx-auto p-4">
+            <main className="container mx-auto px-4 py-6">
                 <Routes>
                     <Route 
                         path="/" 
@@ -80,6 +100,8 @@ function App() {
                     <Route path="/view-proposals/:gigId" element={<PrivateRoute><ViewProposalsPage /></PrivateRoute>} />
                     <Route path="/my-proposals" element={<PrivateRoute><MyProposalsPage /></PrivateRoute>} />
                     <Route path="/services" element={<PrivateRoute><ServicesPage /></PrivateRoute>} />
+                    <Route path="/freelancers" element={<PrivateRoute><FindFreelancers /></PrivateRoute>} />
+                    <Route path="/admin" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />
                     <Route path="/contact-us" element={<PrivateRoute><ContactPage /></PrivateRoute>} />
                     
                     {/* --- ALL PROJECT ROUTES --- */}

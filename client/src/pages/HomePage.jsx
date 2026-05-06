@@ -1,3 +1,18 @@
+/**
+ * HomePage Component
+ * UPDATED: May 6, 2026 - Modern Design & Layout Enhancement
+ * 
+ * Changes Made:
+ * - Redesigned hero section with gradient backgrounds
+ * - Enhanced about/services sections with professional layout
+ * - Updated contact form with modern styling
+ * - Applied custom color scheme throughout
+ * - Added smooth animations for page elements
+ * - Improved typography with professional fonts
+ * - Enhanced authentication forms with better UX
+ * - Implemented responsive design for all screen sizes
+ */
+
 import React, { useState, useContext, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom'; // Import Link
 import { AuthContext } from '../context/AuthContext';
@@ -11,11 +26,11 @@ const ChevronDownIcon = () => ( <svg className="pointer-events-none absolute ins
 const EyeIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-500"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639l4.443-5.332a1.01 1.01 0 011.517 0l4.443 5.332a1.012 1.012 0 010 .639l-4.443 5.332a1.01 1.01 0 01-1.517 0l-4.443-5.332z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg> );
 const EyeOffIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-500"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.243 4.243l-4.243-4.243" /></svg> );
 
-// --- This is a helper component for the placeholder sections ---
+// --- Helper component for the placeholder sections ---
 const Section = ({ id, title, children, bg = 'bg-white' }) => (
-    <section id={id} className={`min-h-screen flex flex-col justify-center py-20 px-4 ${bg}`}>
-        <div className="container mx-auto">
-            <h2 className="text-4xl font-bold text-center mb-12 text-gray-800">{title}</h2>
+    <section id={id} className={`gc-section ${bg}`}>
+        <div className="gc-container">
+            <h2 className="text-4xl font-bold text-center mb-12 text-neutral-800">{title}</h2>
             {children}
         </div>
     </section>
@@ -47,25 +62,90 @@ const ContactForm = () => {
     };
 
     return (
-        <form onSubmit={onContactSubmit} className="max-w-xl mx-auto bg-white p-8 rounded-lg shadow-md space-y-4">
-            {contactSuccess && <p className="text-green-600 bg-green-100 p-3 rounded text-center font-medium">{contactSuccess}</p>}
-            {contactError && <p className="text-red-500 bg-red-100 p-3 rounded text-center font-medium">{contactError}</p>}
-            <div>
-                <label htmlFor="contact-name" className="block text-sm font-medium text-gray-700 mb-1">Your Name <span className="text-red-500">*</span></label>
-                <input type="text" name="name" id="contact-name" value={contactData.name} onChange={onContactChange} required className="w-full p-3 border rounded-md" />
+        <div className="max-w-2xl mx-auto">
+            <div className="text-center mb-8">
+                <h3 className="text-2xl font-bold text-neutral-800 mb-4">Get In Touch</h3>
+                <p className="text-neutral-600">
+                    Have questions about GigConnect? We'd love to hear from you.
+                </p>
             </div>
-            <div>
-                <label htmlFor="contact-email" className="block text-sm font-medium text-gray-700 mb-1">Your Email <span className="text-red-500">*</span></label>
-                <input type="email" name="email" id="contact-email" value={contactData.email} onChange={onContactChange} required className="w-full p-3 border rounded-md" />
-            </div>
-            <div>
-                <label htmlFor="contact-message" className="block text-sm font-medium text-gray-700 mb-1">Message <span className="text-gray-400">(Optional)</span></label>
-                <textarea name="message" id="contact-message" rows="5" value={contactData.message} onChange={onContactChange} className="w-full p-3 border rounded-md"></textarea>
-            </div>
-            <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">
-                {isSubmitting ? 'Sending...' : 'Send Message'}
-            </button>
-        </form>
+
+            <form onSubmit={onContactSubmit} className="gc-card p-8 space-y-6">
+                {contactSuccess && (
+                    <div className="bg-secondary-50 border border-secondary-200 text-secondary-800 px-4 py-3 rounded-lg text-center font-medium animate-slide-up">
+                        {contactSuccess}
+                    </div>
+                )}
+                {contactError && (
+                    <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-center font-medium animate-slide-up">
+                        {contactError}
+                    </div>
+                )}
+
+                <div className="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <label htmlFor="contact-name" className="gc-label">
+                            Your Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            name="name"
+                            id="contact-name"
+                            value={contactData.name}
+                            onChange={onContactChange}
+                            required
+                            className="gc-input"
+                            placeholder="John Doe"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="contact-email" className="gc-label">
+                            Your Email <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="email"
+                            name="email"
+                            id="contact-email"
+                            value={contactData.email}
+                            onChange={onContactChange}
+                            required
+                            className="gc-input"
+                            placeholder="john@example.com"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label htmlFor="contact-message" className="gc-label">
+                        Message <span className="text-neutral-400">(Optional)</span>
+                    </label>
+                    <textarea
+                        name="message"
+                        id="contact-message"
+                        rows="5"
+                        value={contactData.message}
+                        onChange={onContactChange}
+                        className="gc-textarea resize-none"
+                        placeholder="Tell us how we can help you..."
+                    ></textarea>
+                </div>
+
+                <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="gc-btn-primary w-full py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {isSubmitting ? (
+                        <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                            Sending...
+                        </div>
+                    ) : (
+                        'Send Message'
+                    )}
+                </button>
+            </form>
+        </div>
     );
 };
 
@@ -81,25 +161,47 @@ const FeaturedProjects = () => {
             .finally(() => setLoading(false));
     }, []);
 
-    if (loading) return <p className="text-center text-gray-500">Loading projects...</p>;
-    if (gigs.length === 0) return <p className="text-center text-gray-500">No projects available right now.</p>;
+    if (loading) return (
+        <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        </div>
+    );
+    if (gigs.length === 0) return (
+        <p className="text-center text-neutral-500 py-12">
+            No projects available right now. Be the first to post a gig!
+        </p>
+    );
 
     return (
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {gigs.map(gig => (
-                <div key={gig._id} className="bg-white p-4 rounded-lg shadow-md h-full flex flex-col border">
-                    <h3 className="text-lg font-bold mb-2 text-blue-700">{gig.title}</h3>
-                    <p className="text-gray-600 text-sm mb-3 line-clamp-3 flex-grow">{gig.description}</p>
-                    <div className="flex justify-between items-center mt-auto pt-2 border-t">
-                        <span className="font-semibold text-green-600">${gig.budget}</span>
-                        <ScrollLink 
-                            to="login-register" 
-                            smooth={true} 
-                            duration={500} 
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {gigs.slice(0, 6).map(gig => (
+                <div key={gig._id} className="gc-card p-6 group hover:scale-105 transition-all duration-300">
+                    <div className="flex items-start justify-between mb-4">
+                        <h3 className="text-xl font-bold text-neutral-800 group-hover:text-primary-700 transition-colors line-clamp-2">
+                            {gig.title}
+                        </h3>
+                        <span className="bg-primary-100 text-primary-700 px-3 py-1 rounded-full text-sm font-medium ml-2 flex-shrink-0">
+                            ${gig.budget}
+                        </span>
+                    </div>
+                    <p className="text-neutral-600 text-sm mb-4 line-clamp-3 leading-relaxed">
+                        {gig.description}
+                    </p>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center text-sm text-neutral-500">
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            {new Date(gig.createdAt).toLocaleDateString()}
+                        </div>
+                        <ScrollLink
+                            to="login-register"
+                            smooth={true}
+                            duration={500}
                             offset={-70}
-                            className="bg-gray-200 text-gray-800 font-bold py-1 px-3 text-sm rounded hover:bg-gray-300 cursor-pointer"
+                            className="gc-btn-accent text-sm px-4 py-2 hover:scale-105 transition-transform"
                         >
-                            Apply
+                            View Details
                         </ScrollLink>
                     </div>
                 </div>
@@ -205,43 +307,144 @@ function HomePage() {
     };
     
     return (
-        <div className="bg-gray-50">
+        <div className="bg-neutral-50">
             <LandingNavbar />
 
             {/* --- "Home" Section --- */}
-            <section id="home" className="h-screen flex items-center justify-center bg-white text-gray-800 text-center p-4">
-                <div>
-                    <h2 className="text-5xl font-bold mb-4">Welcome to GigConnect</h2>
-                    <p className="text-xl mb-8 text-gray-600">Your local marketplace for freelance talent.</p>
-                    <ScrollLink 
-                        to="login-register" 
-                        smooth={true} 
-                        duration={500}
-                        offset={-70}
-                        className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
-                    >
-                        Get Started
-                    </ScrollLink>
+            <section id="home" className="min-h-screen flex items-center justify-center gc-hero-bg text-white">
+                <div className="text-center px-4 max-w-4xl mx-auto animate-fade-in">
+                    <h1 className="text-6xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white to-accent-200 bg-clip-text text-transparent">
+                        Welcome to GigConnect
+                    </h1>
+                    <p className="text-xl md:text-2xl mb-8 text-accent-100 leading-relaxed">
+                        Your hyperlocal marketplace for connecting talented freelancers with local businesses. Build stronger communities, one gig at a time.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                        <ScrollLink
+                            to="login-register"
+                            smooth={true}
+                            duration={500}
+                            offset={-70}
+                            className="gc-btn-primary text-lg px-8 py-4 shadow-large hover:shadow-xl transform hover:scale-105 transition-all"
+                        >
+                            Get Started
+                        </ScrollLink>
+                        <ScrollLink
+                            to="about"
+                            smooth={true}
+                            duration={500}
+                            offset={-70}
+                            className="gc-btn-secondary text-lg px-8 py-4 bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20"
+                        >
+                            Learn More
+                        </ScrollLink>
+                    </div>
                 </div>
             </section>
 
             {/* --- "About" Section --- */}
-            <Section id="about" title="About Us" bg="bg-gray-50">
-                <p className="max-w-3xl mx-auto text-center text-lg text-gray-700">
-                    GigConnect is a hyperlocal freelance marketplace designed to connect talented local professionals with businesses right in their neighborhood. We believe in building stronger communities by making it easy to find and hire talent nearby.
-                </p>
+            <Section id="about" title="About GigConnect" bg="bg-neutral-50">
+                <div className="max-w-4xl mx-auto text-center">
+                    <p className="text-xl text-neutral-600 mb-8 leading-relaxed">
+                        GigConnect is a revolutionary hyperlocal freelance marketplace designed to connect talented local professionals with businesses right in their neighborhood.
+                    </p>
+                    <div className="grid md:grid-cols-3 gap-8 mt-12">
+                        <div className="text-center">
+                            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-semibold text-neutral-800 mb-2">Local Focus</h3>
+                            <p className="text-neutral-600">Connect with talent and businesses in your immediate community</p>
+                        </div>
+                        <div className="text-center">
+                            <div className="w-16 h-16 bg-secondary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg className="w-8 h-8 text-secondary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-semibold text-neutral-800 mb-2">Verified Talent</h3>
+                            <p className="text-neutral-600">All freelancers are vetted and rated by previous clients</p>
+                        </div>
+                        <div className="text-center">
+                            <div className="w-16 h-16 bg-accent-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg className="w-8 h-8 text-accent-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-semibold text-neutral-800 mb-2">Secure Payments</h3>
+                            <p className="text-neutral-600">Safe and secure payment processing with milestone protection</p>
+                        </div>
+                    </div>
+                </div>
             </Section>
 
             {/* --- "Services" Section --- */}
             <Section id="services" title="Our Services" bg="bg-white">
-                <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-                    <div className="bg-white p-6 rounded-lg shadow-md border">
-                        <h3 className="text-2xl font-bold mb-3 text-blue-600">For Clients</h3>
-                        <p className="text-gray-700">Easily post a gig, receive bids from local freelancers, manage your projects, and handle payments securely, all in one place. Find the perfect professional just around the corner.</p>
+                <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
+                    <div className="gc-card p-8 text-center group hover:scale-105 transition-transform duration-300">
+                        <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-primary-200 transition-colors">
+                            <svg className="w-10 h-10 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                        </div>
+                        <h3 className="text-2xl font-bold mb-4 text-primary-700">For Clients</h3>
+                        <p className="text-neutral-600 leading-relaxed">
+                            Easily post a gig, receive bids from local freelancers, manage your projects, and handle payments securely, all in one place. Find the perfect professional just around the corner.
+                        </p>
+                        <ul className="text-left mt-6 space-y-2">
+                            <li className="flex items-center text-neutral-700">
+                                <svg className="w-5 h-5 text-secondary-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                Post detailed project requirements
+                            </li>
+                            <li className="flex items-center text-neutral-700">
+                                <svg className="w-5 h-5 text-secondary-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                Review and compare proposals
+                            </li>
+                            <li className="flex items-center text-neutral-700">
+                                <svg className="w-5 h-5 text-secondary-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                Secure milestone-based payments
+                            </li>
+                        </ul>
                     </div>
-                    <div className="bg-white p-6 rounded-lg shadow-md border">
-                        <h3 className="text-2xl font-bold mb-3 text-blue-600">For Freelancers</h3>
-                        <p className="text-gray-700">Showcase your skills, browse local jobs, submit proposals, and get paid securely. Build your portfolio and grow your freelance business within your own community.</p>
+                    <div className="gc-card p-8 text-center group hover:scale-105 transition-transform duration-300">
+                        <div className="w-20 h-20 bg-accent-100 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-accent-200 transition-colors">
+                            <svg className="w-10 h-10 text-accent-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m8 0V8a2 2 0 01-2 2H8a2 2 0 01-2-2V6m8 0H8m0 0V4" />
+                            </svg>
+                        </div>
+                        <h3 className="text-2xl font-bold mb-4 text-accent-700">For Freelancers</h3>
+                        <p className="text-neutral-600 leading-relaxed">
+                            Showcase your skills, browse local jobs, submit proposals, and get paid securely. Build your portfolio and grow your freelance business within your own community.
+                        </p>
+                        <ul className="text-left mt-6 space-y-2">
+                            <li className="flex items-center text-neutral-700">
+                                <svg className="w-5 h-5 text-secondary-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                Create detailed professional profiles
+                            </li>
+                            <li className="flex items-center text-neutral-700">
+                                <svg className="w-5 h-5 text-secondary-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                Discover local opportunities
+                            </li>
+                            <li className="flex items-center text-neutral-700">
+                                <svg className="w-5 h-5 text-secondary-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                Real-time messaging with clients
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </Section>

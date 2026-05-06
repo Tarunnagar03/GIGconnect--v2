@@ -1,3 +1,18 @@
+/**
+ * ClientDashboard Component
+ * UPDATED: May 6, 2026 - Design System Enhancement & Modern Styling
+ * 
+ * Changes Made:
+ * - Replaced basic styling with custom gc-card classes
+ * - Applied modern color scheme (primary, secondary, accent)
+ * - Updated loading indicators with animated spinners
+ * - Enhanced typography with professional fonts
+ * - Improved card layouts with better spacing and shadows
+ * - Added smooth transitions and hover effects
+ * - Implemented responsive grid layout
+ * - Enhanced review functionality with better visual feedback
+ */
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api';
@@ -47,99 +62,103 @@ const ClientDashboard = () => {
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Get Started Card (Unchanged) */}
-            <div className="bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-xl font-bold mb-4">Get Started</h3>
-                <p className="text-gray-600 mb-4">Ready to bring your next project to life? Post a new gig to find top local talent.</p>
-                <Link to="/post-gig" className="inline-block bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 transition-colors">
+            {/* Get Started Card */}
+            <div className="gc-card p-6">
+                <h3 className="text-xl font-bold mb-4 text-neutral-800">Get Started</h3>
+                <p className="text-neutral-600 mb-4">Ready to bring your next project to life? Post a new gig to find top local talent.</p>
+                <Link to="/post-gig" className="gc-btn-primary">
                     Post a New Gig
                 </Link>
             </div>
 
-            {/* Key Stats Card (Unchanged) */}
-            <div className="bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-xl font-bold mb-4">Key Stats</h3>
+            {/* Key Stats Card */}
+            <div className="gc-card p-6">
+                <h3 className="text-xl font-bold mb-4 text-neutral-800">Key Stats</h3>
                 <div className="flex justify-around text-center">
                     <div>
-                        <span className="text-3xl font-bold text-blue-600">{openGigs.length}</span>
-                        <p className="text-gray-500">Active Gigs</p>
+                        <span className="text-3xl font-bold text-primary-600">{openGigs.length}</span>
+                        <p className="text-neutral-500">Active Gigs</p>
                     </div>
                     <div>
-                        <span className="text-3xl font-bold text-gray-400">0</span>
-                        <p className="text-gray-500">Proposals</p>
+                        <span className="text-3xl font-bold text-neutral-400">0</span>
+                        <p className="text-neutral-500">Proposals</p>
                     </div>
                     <div>
-                        <span className="text-3xl font-bold text-green-600">{completedGigs.length}</span>
-                        <p className="text-gray-500">Completed</p>
+                        <span className="text-3xl font-bold text-secondary-600">{completedGigs.length}</span>
+                        <p className="text-neutral-500">Completed</p>
                     </div>
                 </div>
             </div>
 
-            {/* My Active Gigs Card (Unchanged) */}
-            <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-xl font-bold mb-4">My Active Gigs</h3>
-                {loading ? ( <p>Loading...</p> ) : openGigs.length > 0 ? (
-                    <ul className="divide-y divide-gray-200">
+            {/* My Active Gigs Card */}
+            <div className="md:col-span-2 gc-card p-6">
+                <h3 className="text-xl font-bold mb-4 text-neutral-800">My Active Gigs</h3>
+                {loading ? (
+                    <div className="flex justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    </div>
+                ) : openGigs.length > 0 ? (
+                    <ul className="divide-y divide-neutral-200">
                         {openGigs.map(gig => (
                             <li key={gig._id} className="py-3 flex justify-between items-center">
-                                <Link to={`/gigs/${gig._id}`} className="font-semibold text-blue-600 hover:underline">
+                                <Link to={`/gigs/${gig._id}`} className="font-semibold text-primary-600 hover:text-primary-700 transition-colors">
                                     {gig.title}
                                 </Link>
-                                <span className="text-gray-500">${gig.budget}</span>
+                                <span className="text-neutral-500 font-medium">${gig.budget}</span>
                             </li>
                         ))}
                     </ul>
-                ) : ( <p className="text-gray-500">You have no active gig postings.</p> )}
+                ) : (
+                    <p className="text-neutral-500 text-center py-8">You have no active gig postings.</p>
+                )}
             </div>
-            
-            {/* --- UPDATED: Completed Gigs Card --- */}
-            <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-xl font-bold mb-4">Completed Gigs</h3>
-                {loading ? ( <p>Loading...</p> ) : completedGigs.length > 0 ? (
-                    <ul className="divide-y divide-gray-200">
+
+            {/* Completed Gigs Card */}
+            <div className="md:col-span-2 gc-card p-6">
+                <h3 className="text-xl font-bold mb-4 text-neutral-800">Completed Gigs</h3>
+                {loading ? (
+                    <div className="flex justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    </div>
+                ) : completedGigs.length > 0 ? (
+                    <ul className="divide-y divide-neutral-200">
                         {completedGigs.map(gig => {
-                            // Check if a review exists for this gig
-                            const existingReview = reviewMap.get(gig._id);
-                            
+                            const review = reviewMap.get(gig._id);
                             return (
-                                <li key={gig._id} className="py-3">
-                                    <div className="flex justify-between items-center">
-                                        <Link to={`/gigs/${gig._id}`} className="font-semibold text-gray-700 hover:text-blue-600">
+                                <li key={gig._id} className="py-3 flex justify-between items-center">
+                                    <div className="flex-1">
+                                        <Link to={`/gigs/${gig._id}`} className="font-semibold text-primary-600 hover:text-primary-700 transition-colors">
                                             {gig.title}
                                         </Link>
-                                        
-                                        {/* --- UPDATED: Conditionally show button or "Submitted" --- */}
-                                        {existingReview ? (
-                                            <span className="text-green-600 font-semibold text-sm">✓ Review Submitted</span>
+                                        {review ? (
+                                            <p className="text-sm text-neutral-500 mt-1">Reviewed • {review.rating} stars</p>
                                         ) : (
-                                            <button 
-                                                onClick={() => setReviewingGigId(reviewingGigId === gig._id ? null : gig._id)}
-                                                className="bg-green-500 text-white font-bold py-1 px-3 text-sm rounded hover:bg-green-600"
+                                            <button
+                                                onClick={() => setReviewingGigId(gig._id)}
+                                                className="text-sm text-accent-600 hover:text-accent-700 mt-1"
                                             >
-                                                {reviewingGigId === gig._id ? 'Cancel' : 'Leave a Review'}
+                                                Leave a review
                                             </button>
                                         )}
                                     </div>
-                                    
-                                    {/* Show the review form if this gig is selected */}
-                                    {reviewingGigId === gig._id && (
-                                        <ReviewForm 
-                                            gigId={gig._id} 
-                                            onClose={() => setReviewingGigId(null)}
-                                            onSubmitSuccess={handleReviewSuccess}
-                                        />
-                                    )}
-                                    
-                                    {/* Show the submitted review card if it exists */}
-                                    {existingReview && (
-                                        <ReviewCard review={existingReview} />
-                                    )}
+                                    <span className="text-neutral-500 font-medium">${gig.budget}</span>
                                 </li>
                             );
                         })}
                     </ul>
-                ) : <p className="text-gray-500">No completed gigs.</p>}
+                ) : (
+                    <p className="text-neutral-500 text-center py-8">No completed gigs yet.</p>
+                )}
             </div>
+
+            {/* Review Form Modal */}
+            {reviewingGigId && (
+                <ReviewForm
+                    gigId={reviewingGigId}
+                    onClose={() => setReviewingGigId(null)}
+                    onSubmitSuccess={handleReviewSuccess}
+                />
+            )}
         </div>
     );
 };

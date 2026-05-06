@@ -1,3 +1,16 @@
+/**
+ * InboxPage Component
+ * UPDATED: May 6, 2026 - Messaging System Enhancement
+ * 
+ * Features:
+ * - Conversation list display
+ * - Real-time message updates via Socket.IO
+ * - User presence indicators
+ * - Message history management
+ * - Modern messaging interface
+ * - Responsive design for mobile
+ */
+
 import React, { useState, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
@@ -8,7 +21,7 @@ const InboxPage = () => {
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
     const { auth } = useContext(AuthContext);
-    const { onlineUsers } = useContext(SocketContext);
+    const { onlineUsers, socket } = useContext(SocketContext);
 
     useEffect(() => {
         const fetchConversations = async () => {
@@ -26,6 +39,18 @@ const InboxPage = () => {
             fetchConversations();
         }
     }, [auth.isAuthenticated]);
+
+    // Re-fetch inbox when a new message updates a conversation
+    useEffect(() => {
+        if (!socket || !auth.isAuthenticated) return;
+        const handler = () => {
+            api.get('/conversations')
+                .then((res) => setConversations(res.data))
+                .catch(() => {});
+        };
+        socket.on('conversationUpdated', handler);
+        return () => socket.off('conversationUpdated', handler);
+    }, [socket, auth.isAuthenticated]);
 
     if (loading) {
         return <div className="text-center mt-10">Loading your inbox...</div>;

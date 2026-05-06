@@ -1,3 +1,16 @@
+/**
+ * SubmitProposalPage Component
+ * UPDATED: May 6, 2026 - Proposal System Enhancement
+ * 
+ * Features:
+ * - Proposal form for gigs
+ * - Bid amount configuration
+ * - Timeline estimation
+ * - Proposal description
+ * - Form validation
+ * - Modern UI with custom design system
+ */
+
 import React, { useState, useEffect, useContext } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
@@ -73,6 +86,7 @@ const SubmitProposalPage = () => {
             await api.post('/proposals', proposalData);
             setSuccess('Proposal submitted successfully!');
             setExistingProposalStatus('Submitted'); // Update UI immediately
+            setTimeout(() => navigate('/my-proposals'), 800);
         } catch (err) {
             console.error("Proposal submission error:", err.response || err);
             setError(err.response?.data?.msg || 'Failed to submit proposal. Please try again.');

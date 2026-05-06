@@ -1,3 +1,16 @@
+/**
+ * AboutMePage Component
+ * UPDATED: May 6, 2026 - Profile Display Enhancement
+ * 
+ * Features:
+ * - User profile information display
+ * - Freelancer or Client profile view
+ * - Skills and experience showcase
+ * - Rating and review statistics
+ * - Contact options
+ * - Modern profile layout
+ */
+
 import React, { useState, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
@@ -30,7 +43,7 @@ const AboutMePage = () => {
             try {
                 // Fetch both profile and user data
                 const [profileRes, userRes] = await Promise.all([
-                    api.get('/profiles/me').catch(e => null), // Allow profile to be null
+                    api.get('/profiles/me').catch(() => null), // Allow profile to be null
                     api.get('/users/me')
                 ]);
                 

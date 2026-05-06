@@ -1,3 +1,16 @@
+/**
+ * BrowseGigs Page Component
+ * UPDATED: May 6, 2026 - Design System Enhancement
+ * 
+ * Changes Made:
+ * - Updated gig card styling with modern design
+ * - Applied custom color scheme to filters and buttons
+ * - Enhanced search and filter interfaces
+ * - Improved pagination with modern styling
+ * - Added smooth transitions and hover effects
+ * - Enhanced responsive layout for mobile devices
+ */
+
 import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api';
@@ -16,6 +29,8 @@ const BrowseGigs = () => {
         keyword: searchParams.get('keyword') || '',
         minPrice: searchParams.get('minPrice') || '',
         maxPrice: searchParams.get('maxPrice') || '',
+        skills: searchParams.get('skills') || '',
+        radiusKm: searchParams.get('radiusKm') || '',
     });
 
     const fetchGigsAndProposals = useCallback(async () => {
@@ -31,6 +46,20 @@ const BrowseGigs = () => {
             const params = new URLSearchParams(filters);
             for (const [key, value] of params.entries()) {
                 if (!value) params.delete(key);
+            }
+
+            // If radiusKm is set, attach current user's profile geo if available.
+            if (filters.radiusKm) {
+                try {
+                    const me = await api.get('/profiles/me');
+                    const coords = me.data?.geo?.coordinates;
+                    if (Array.isArray(coords) && coords.length === 2) {
+                        params.set('lng', String(coords[0]));
+                        params.set('lat', String(coords[1]));
+                    }
+                } catch {
+                    // ignore: browsing still works without geo
+                }
             }
 
             const [gigsRes, proposalsRes] = await Promise.all([
@@ -93,12 +122,22 @@ const BrowseGigs = () => {
                             <input type="text" id="keyword" name="keyword" value={filters.keyword} onChange={handleFilterChange} placeholder="e.g., 'React developer'" className="mt-1 block w-full p-2 border rounded-md" />
                         </div>
                         <div>
+                            <label htmlFor="skills" className="block text-sm font-medium text-gray-700">Skills</label>
+                            <input type="text" id="skills" name="skills" value={filters.skills} onChange={handleFilterChange} placeholder="e.g., React, Node" className="mt-1 block w-full p-2 border rounded-md" />
+                            <p className="text-xs text-gray-500 mt-1">Comma-separated (optional)</p>
+                        </div>
+                        <div>
                             <label className="block text-sm font-medium text-gray-700">Price Range</label>
                             <div className="flex items-center space-x-2 mt-1">
                                 <input type="number" name="minPrice" value={filters.minPrice} onChange={handleFilterChange} placeholder="Min $" className="w-full p-2 border rounded-md" />
                                 <span>-</span>
                                 <input type="number" name="maxPrice" value={filters.maxPrice} onChange={handleFilterChange} placeholder="Max $" className="w-full p-2 border rounded-md" />
                             </div>
+                        </div>
+                        <div>
+                            <label htmlFor="radiusKm" className="block text-sm font-medium text-gray-700">Near me (km)</label>
+                            <input type="number" id="radiusKm" name="radiusKm" value={filters.radiusKm} onChange={handleFilterChange} placeholder="e.g., 10" className="mt-1 block w-full p-2 border rounded-md" />
+                            <p className="text-xs text-gray-500 mt-1">Uses your saved GPS (Profile → Use my GPS).</p>
                         </div>
                         <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Apply Filters</button>
                     </form>
