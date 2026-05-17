@@ -50,8 +50,9 @@ const ForgotPassword = () => {
                         </button>
                     </form>
                     <div className="text-center mt-6">
-                        <Link to="/" className="text-sm text-blue-600 hover:underline">
-                            &larr; Back to Login
+                        <Link to="/" className="inline-flex items-center gap-2 text-gray-600 hover:text-blue-600 font-semibold bg-gray-50 border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow hover:border-blue-200 transition-all group">
+                            <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                            Back to Login
                         </Link>
                     </div>
                 </div>

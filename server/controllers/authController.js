@@ -7,6 +7,9 @@ const crypto = require('crypto'); // Import the built-in crypto module
 // Helper function to generate a 6-digit code
 const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
+// Safe fallback for JWT Secret during development
+const JWT_SECRET = process.env.JWT_SECRET || 'gigconnect_default_secret_123';
+
 // --- (Your existing registerUser, loginUser, verifyLogin2FA functions) ---
 exports.registerUser = async (req, res) => {
     const { name, username, email, password, role, dob, country, state, city, phone, companyName, headline } = req.body;
@@ -38,13 +41,16 @@ exports.registerUser = async (req, res) => {
             } 
         };
         
-        jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' }, (err, token) => {
-            if (err) throw err;
+        jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }, (err, token) => {
+            if (err) {
+                console.error("JWT Error:", err);
+                return res.status(500).json({ msg: 'Error generating token' });
+            }
             res.json({ token });
         });
     } catch (err) {
         console.error(err.message);
-        res.status(500).send('Server error');
+        res.status(500).json({ msg: 'Server error: ' + err.message });
     }
 };
 exports.loginUser = async (req, res) => {
@@ -79,13 +85,16 @@ exports.loginUser = async (req, res) => {
                 username: user.username
             } 
         };
-        jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' }, (err, token) => {
-            if (err) throw err;
+        jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }, (err, token) => {
+            if (err) {
+                console.error("JWT Error:", err);
+                return res.status(500).json({ msg: 'Error generating token' });
+            }
             res.json({ token });
         });
     } catch (err) {
         console.error(err.message);
-        res.status(500).send('Server error');
+        res.status(500).json({ msg: 'Server error: ' + err.message });
     }
 };
 exports.verifyLogin2FA = async (req, res) => {
@@ -108,13 +117,16 @@ exports.verifyLogin2FA = async (req, res) => {
                 username: user.username
             } 
         };
-        jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' }, (err, finalToken) => {
-            if (err) throw err;
+        jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }, (err, finalToken) => {
+            if (err) {
+                console.error("JWT Error:", err);
+                return res.status(500).json({ msg: 'Error generating token' });
+            }
             res.json({ token: finalToken });
         });
     } catch (err) {
         console.error(err.message);
-        res.status(500).send('Server Error');
+        res.status(500).json({ msg: 'Server error: ' + err.message });
     }
 };
 

@@ -68,9 +68,10 @@ exports.acceptProposal = async (req, res) => {
         if (proposal.gig.status !== 'Open') return res.status(400).json({ msg: 'Gig is not open for assignment' });
 
         const gig = proposal.gig;
-        gig.assignedFreelancer = proposal.freelancer;
-        gig.status = 'In Progress';
-        await gig.save();
+        await Gig.findByIdAndUpdate(gig._id, {
+            $set: { assignedFreelancer: proposal.freelancer, status: 'In Progress' }
+        });
+
         proposal.status = 'Accepted';
         await proposal.save();
         await Proposal.updateMany(
@@ -79,8 +80,8 @@ exports.acceptProposal = async (req, res) => {
         );
         res.json({ msg: 'Proposal accepted and gig assigned.', gig });
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error');
+        console.error("Accept Proposal error:", err);
+        res.status(500).json({ msg: err.message || 'Server Error' });
     }
 };
 
@@ -107,7 +108,7 @@ exports.rejectProposal = async (req, res) => {
 
         res.json({ msg: 'Proposal rejected.', proposal });
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error');
+        console.error("Reject Proposal error:", err);
+        res.status(500).json({ msg: err.message || 'Server Error' });
     }
 };

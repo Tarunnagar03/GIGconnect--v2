@@ -26,9 +26,15 @@ const UserSchema = new mongoose.Schema({
     country: { type: String },
     state: { type: String },
     city: { type: String },
+    // Geospatial data for hyperlocal search (stores longitude & latitude)
+    geo: {
+        type: { type: String, enum: ['Point'] },
+        coordinates: { type: [Number], default: undefined } // [lng, lat]
+    },
     phone: { type: String },
     companyName: { type: String },
     headline: { type: String },
+    profileImage: { type: String, default: '' },
     date: { type: Date, default: Date.now },
     // 2FA Fields
     twoFactorEnabled: { type: Boolean, default: false },
@@ -44,5 +50,8 @@ const UserSchema = new mongoose.Schema({
     // Admin can soft-disable accounts (safer than delete).
     isActive: { type: Boolean, default: true }
 });
+
+// Enable MongoDB geospatial queries for finding users near a specific location
+UserSchema.index({ geo: '2dsphere' });
 
 module.exports = mongoose.model('User', UserSchema);

@@ -25,7 +25,9 @@ const UpdateDetailsPage = () => {
     const [formData, setFormData] = useState({
         name: '', email: '', username: '', dob: '',
         country: '', state: '', city: '', phone: '',
-        companyName: '', headline: ''
+        companyName: '', headline: '',
+        contactVisibility: 'Everyone',
+        profileImage: ''
     });
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -43,17 +45,28 @@ const UpdateDetailsPage = () => {
         api.get('/users/me')
             .then(res => {
                 const user = res.data;
+                    let formattedDob = '';
+                    if (user.dob) {
+                        try {
+                            const dateObj = new Date(user.dob);
+                            if (!isNaN(dateObj.getTime())) {
+                                formattedDob = dateObj.toISOString().split('T')[0];
+                            }
+                        } catch (e) {}
+                    }
                 setFormData({
                     name: user.name || '',
                     email: user.email || '',
                     username: user.username || '',
-                    dob: user.dob ? user.dob.split('T')[0] : '', // Format date for input
+                        dob: formattedDob,
                     country: user.country || '',
                     state: user.state || '',
                     city: user.city || '',
                     phone: user.phone || '',
                     companyName: user.companyName || '',
-                    headline: user.headline || ''
+                    headline: user.headline || '',
+                    contactVisibility: user.contactVisibility || 'Everyone',
+                    profileImage: user.profileImage || ''
                 });
             })
             .catch(() => {
@@ -66,7 +79,11 @@ const UpdateDetailsPage = () => {
     useEffect(() => {
         if (formData.country) {
             const countryInfo = Country.getCountryByCode(formData.country);
-            setStates(State.getStatesOfCountry(countryInfo.isoCode));
+            if (countryInfo) {
+                setStates(State.getStatesOfCountry(countryInfo.isoCode));
+            } else {
+                setStates([]);
+            }
         } else {
             setStates([]);
         }
@@ -75,32 +92,92 @@ const UpdateDetailsPage = () => {
     // --- 3. Load cities when state changes ---
     useEffect(() => {
         if (formData.country && formData.state) {
-            // Need to get stateInfo to find isoCode for city fetching
             const countryInfo = Country.getCountryByCode(formData.country);
-            const stateInfo = State.getStatesOfCountry(countryInfo.isoCode).find(s => s.isoCode === formData.state);
-            if (stateInfo) {
-                setCities(City.getCitiesOfState(formData.country, stateInfo.isoCode));
+            if (countryInfo) {
+                const stateInfo = State.getStatesOfCountry(countryInfo.isoCode).find(s => s.isoCode === formData.state);
+                if (stateInfo) {
+                    setCities(City.getCitiesOfState(formData.country, stateInfo.isoCode));
+                } else {
+                    setCities([]);
+                }
             }
         } else {
             setCities([]);
         }
     }, [formData.country, formData.state]);
 
+    const onChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => {
+            const newData = { ...prev, [name]: value };
+            if (name === 'country') { newData.state = ''; newData.city = ''; }
+            if (name === 'state') { newData.city = ''; }
+            return newData;
+        });
+    };
 
-    const onChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+    // --- Handle Image selection from Device Gallery ---
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (file.size > 2 * 1024 * 1024) { // 2MB limit
+                setError('Image size should be less than 2MB.');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setFormData(prev => ({ ...prev, profileImage: reader.result }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const onSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setSuccess('');
         try {
-            const res = await api.put('/users/update-details', formData);
-            login(res.data.token); // Update the token in context
+            const payload = { ...formData };
+            
+            // Remove fields that are not applicable to the user's role
+            if (auth.user?.role !== 'Freelancer') delete payload.headline;
+            if (auth.user?.role !== 'Client') delete payload.companyName;
+            
+            // Deep clean: Remove any empty strings to prevent MongoDB CastErrors (Status 500)
+            Object.keys(payload).forEach(key => {
+                if (payload[key] === '' || payload[key] === null || payload[key] === undefined) {
+                    delete payload[key];
+                }
+            });
+
+            const res = await api.put('/users/update-details', payload);
+            // Check if backend returned a token before updating context. 
+            // If it's undefined, login() will crash jwtDecode and trigger the catch block.
+            if (res.data && res.data.token) {
+                login(res.data.token); 
+            }
             setSuccess('Details updated successfully!');
             setTimeout(() => navigate('/settings'), 2000);
         } catch (err) {
-            setError(err.response?.data?.msg || 'Failed to update details.');
+            console.error("Update details error:", err);
+            console.error("Full backend response:", err.response?.data);
+            const errData = err.response?.data;
+            let errMsg = errData?.msg || errData?.message || (errData?.errors && errData.errors[0]?.msg) || err.message || 'Failed to update details.';
+            
+            if (typeof errData === 'string' && (errData.includes('11000') || errData.toLowerCase().includes('duplicate'))) {
+                errMsg = "Duplicate Error: This Email or Username is already taken by another account.";
+            } else if (typeof errData === 'string' && errData.length < 100) {
+                errMsg += ` - ${errData}`;
+            }
+
+            if (err.response?.status === 500 && !errMsg.includes('Duplicate')) {
+                // FIX: Show the ACTUAL backend error instead of a hardcoded misleading message
+                errMsg = `Server Error (500): ${errMsg}`;
+            }
+            
+            setError(errMsg);
         }
+
     };
 
     if (loading) {
@@ -108,15 +185,34 @@ const UpdateDetailsPage = () => {
     }
 
     return (
-        <div className="max-w-2xl mx-auto">
-            <Link to="/settings" className="inline-block mb-6 text-blue-600 hover:underline">
-                &larr; Back to Settings
+        <div className="max-w-3xl mx-auto animate-fade-in">
+            <Link to="/settings" className="inline-flex items-center gap-2 mb-6 text-gray-600 hover:text-blue-600 font-semibold bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow hover:border-blue-200 transition-all group">
+                <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                Back to Settings
             </Link>
-            <h1 className="text-3xl font-bold mb-6 text-gray-800">Personal Details</h1>
-            <form onSubmit={onSubmit} className="bg-white p-8 rounded-lg shadow-md space-y-6">
+            <h1 className="text-4xl font-extrabold mb-8 text-gray-800 tracking-tight">Personal Details</h1>
+            <form onSubmit={onSubmit} className="bg-white p-10 rounded-2xl shadow-lg border border-gray-100 space-y-6">
                 {error && <p className="text-red-500 bg-red-100 p-3 rounded text-center">{error}</p>}
                 {success && <p className="text-green-600 bg-green-100 p-3 rounded text-center">{success}</p>}
                 
+                {/* --- Profile Image Uploader --- */}
+                <div className="flex flex-col items-center mb-8 border-b border-gray-100 pb-8">
+                    <div className="relative group">
+                        <div className="w-32 h-32 rounded-full border-4 border-white shadow-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                            {formData.profileImage ? (
+                                <img src={formData.profileImage} alt="Profile" className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-4xl text-gray-400">📷</span>
+                            )}
+                        </div>
+                        <label className="absolute bottom-0 right-0 bg-blue-600 text-white p-2.5 rounded-full cursor-pointer shadow-md hover:bg-blue-700 transition-colors transform hover:scale-105">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                        </label>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-4 font-medium">Click the blue icon to upload from gallery</p>
+                </div>
+
                 {/* --- Role-specific fields --- */}
                 {auth.user.role === 'Client' && (
                     <div>
@@ -143,6 +239,26 @@ const UpdateDetailsPage = () => {
                 <div>
                     <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email Address <span className="text-red-500">*</span></label>
                     <input type="email" id="email" name="email" value={formData.email} onChange={onChange} required className="w-full p-3 border rounded-md" />
+                </div>
+                <div>
+                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">Phone Number <span className="text-gray-400">(Optional)</span></label>
+                    <input id="phone" type="tel" name="phone" value={formData.phone} onChange={onChange} className="w-full p-3 border rounded-md" />
+                </div>
+
+                {/* --- Privacy & Visibility --- */}
+                <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                    <label htmlFor="contactVisibility" className="block text-sm font-bold text-gray-800 mb-2">
+                        Who can view your Contact Info (Email & Phone)?
+                    </label>
+                    <div className="relative">
+                        <select id="contactVisibility" name="contactVisibility" value={formData.contactVisibility} onChange={onChange} className="appearance-none w-full p-3 border border-gray-300 rounded-md bg-white text-black font-medium">
+                            <option value="Everyone">Everyone (Public)</option>
+                            <option value="Connections">Logged-in Users Only</option>
+                            <option value="Only Me">Only Me (Private)</option>
+                        </select>
+                        <ChevronDownIcon />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Adjusting this controls who can see your contact details on your public profile.</p>
                 </div>
                 
                 {/* --- Location fields --- */}
@@ -182,11 +298,7 @@ const UpdateDetailsPage = () => {
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label htmlFor="dob" className="block text-sm font-medium text-gray-700 mb-1">Date of Birth <span className="text-red-500">*</span></label>
-                        <input id="dob" type="date" name="dob" value={formData.dob} onChange={onChange} required className="w-full p-3 border rounded-md text-gray-500" />
-                    </div>
-                    <div>
-                        <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">Phone <span className="text-gray-400">(Optional)</span></label>
-                        <input id="phone" type="tel" name="phone" value={formData.phone} onChange={onChange} className="w-full p-3 border rounded-md" />
+                        <input id="dob" type="date" name="dob" value={formData.dob} onChange={onChange} required className="w-full p-3 border rounded-md" />
                     </div>
                 </div>
                 

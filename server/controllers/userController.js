@@ -2,6 +2,9 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+// Safe fallback for JWT Secret during development
+const JWT_SECRET = process.env.JWT_SECRET || 'gigconnect_default_secret_123';
+
 // Function to generate a new token
 const signToken = (user) => {
     const payload = { 
@@ -12,7 +15,7 @@ const signToken = (user) => {
             username: user.username
         } 
     };
-    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
 };
 
 // @desc    Update user password

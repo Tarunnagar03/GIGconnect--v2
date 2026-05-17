@@ -32,7 +32,7 @@ const ProfileSchema = new mongoose.Schema({
     // Hyperlocal search support (optional but recommended)
     locationText: { type: String }, // e.g. "Bengaluru, Karnataka"
     geo: {
-        type: { type: String, enum: ['Point'], default: 'Point' },
+        type: { type: String, enum: ['Point'] },
         coordinates: { type: [Number], default: undefined } // [lng, lat]
     },
 

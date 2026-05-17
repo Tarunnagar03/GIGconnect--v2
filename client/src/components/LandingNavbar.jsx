@@ -14,7 +14,6 @@ import React from 'react';
 import { Link as ScrollLink } from 'react-scroll';
 
 const LandingNavbar = () => {
-const LandingNavbar = () => {
     return (
         <nav className="bg-white/95 backdrop-blur-md text-neutral-800 px-4 py-4 shadow-soft sticky top-0 z-50 border-b border-neutral-200/60">
             <div className="gc-container flex justify-between items-center">
@@ -90,7 +89,6 @@ const LandingNavbar = () => {
             </div>
         </nav>
     );
-};
 };
 
 export default LandingNavbar;

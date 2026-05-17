@@ -42,14 +42,17 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173",
+        origin: process.env.CLIENT_URL || "http://localhost:5173",
         methods: ["GET", "POST"]
     }
 });
 
 connectDB();
 
-app.use(cors());
+app.use(cors({
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    credentials: true
+}));
 app.use(express.json());
 
 // --- API Routes ---
@@ -65,16 +68,17 @@ app.use('/api/payments', require('./routes/payments'));
 app.use('/api/proposals', require('./routes/proposals'));
 app.use('/api/contact', require('./routes/contact.js'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 let onlineUsers = new Map();
 
 // Authenticate sockets via JWT (sent from client as socket.auth.token)
 io.use((socket, next) => {
     try {
-        const token = socket.handshake?.auth?.token;
+        const token = socket.handshake?.auth?.token || socket.handshake?.headers?.authorization;
         if (!token) return next(new Error('No auth token'));
         const decoded = jwt.verify(token.replace(/^Bearer\s+/i, ''), process.env.JWT_SECRET);
-        socket.user = decoded.user;
+        socket.user = decoded.user || decoded;
         return next();
     } catch (err) {
         return next(new Error('Invalid auth token'));
@@ -125,7 +129,7 @@ io.on('connection', (socket) => {
             // 2. Find or Create the conversation and update its last message
             const participantIds = roomName.split('-');
             const participantObjectIds = participantIds
-                .filter(Boolean)
+                .filter((id) => mongoose.Types.ObjectId.isValid(id))
                 .map((id) => new mongoose.Types.ObjectId(id));
 
             // Upsert by roomId to avoid Mongo upsert inference issues on array queries
@@ -167,12 +171,24 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- Read Receipts ---
+    socket.on('markAsRead', ({ roomName, userId }) => {
+        socket.to(roomName).emit('messagesRead', { byUserId: userId });
+    });
+
+    // --- Typing Indicators Events ---
+    socket.on('typing', ({ roomName, senderId }) => {
+        socket.to(roomName).emit('typing', { senderId });
+    });
+
+    socket.on('stopTyping', ({ roomName, senderId }) => {
+        socket.to(roomName).emit('stopTyping', { senderId });
+    });
+
     socket.on('disconnect', () => {
-        for (let [userId, socketId] of onlineUsers.entries()) {
-            if (socketId === socket.id) {
-                onlineUsers.delete(userId);
-                break;
-            }
+        const userId = socket.user?.id || socket.user?._id;
+        if (userId && onlineUsers.get(userId) === socket.id) {
+            onlineUsers.delete(userId);
         }
         io.emit('getOnlineUsers', Array.from(onlineUsers.keys()));
         console.log('❌ User disconnected:', socket.id);

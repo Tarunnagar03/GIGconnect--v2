@@ -12,7 +12,7 @@
  */
 
 import React, { useState, useEffect, useContext } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { AuthContext } from '../context/AuthContext';
 import { SocketContext } from '../context/SocketContext';
@@ -22,12 +22,13 @@ const InboxPage = () => {
     const [loading, setLoading] = useState(true);
     const { auth } = useContext(AuthContext);
     const { onlineUsers, socket } = useContext(SocketContext);
+    const navigate = useNavigate();
 
     useEffect(() => {
         const fetchConversations = async () => {
             try {
                 const res = await api.get('/conversations');
-                setConversations(res.data);
+                setConversations(Array.isArray(res.data) ? res.data : []);
             } catch (err) {
                 console.error('Failed to fetch conversations:', err);
             } finally {
@@ -45,52 +46,87 @@ const InboxPage = () => {
         if (!socket || !auth.isAuthenticated) return;
         const handler = () => {
             api.get('/conversations')
-                .then((res) => setConversations(res.data))
+                .then((res) => setConversations(Array.isArray(res.data) ? res.data : []))
                 .catch(() => {});
         };
         socket.on('conversationUpdated', handler);
         return () => socket.off('conversationUpdated', handler);
     }, [socket, auth.isAuthenticated]);
 
+    const handleProfileClick = (e, participant) => {
+        e.preventDefault(); // Prevents the outer <Link> from triggering
+        e.stopPropagation();
+        if (participant.role === 'Client') {
+            navigate(`/client-profile/${participant._id}`);
+        } else {
+            navigate(`/profile/${participant._id}`);
+        }
+    };
+
     if (loading) {
         return <div className="text-center mt-10">Loading your inbox...</div>;
     }
 
     return (
-        <div className="max-w-2xl mx-auto">
-            <h1 className="text-3xl font-bold mb-6">Inbox</h1>
-            <div className="bg-white rounded-lg shadow-md">
+        <div className="max-w-4xl mx-auto animate-fade-in">
+            <Link to="/dashboard" className="inline-flex items-center gap-2 mb-6 text-gray-600 hover:text-blue-600 font-semibold bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow hover:border-blue-200 transition-all group">
+                <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                Back to Dashboard
+            </Link>
+            <h1 className="text-4xl font-extrabold mb-8 text-gray-800 tracking-tight">Messages</h1>
+            
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                 {conversations.length > 0 ? (
-                    <ul className="divide-y divide-gray-200">
+                    <div className="flex flex-col">
                         {conversations.map(convo => {
-                            const otherParticipant = convo.participants.find(p => p._id !== auth.user.id);
+                            const otherParticipant = convo.participants.find(p => String(p._id) !== String(auth.user.id));
                             if (!otherParticipant) return null;
 
-                            const isOnline = onlineUsers.includes(otherParticipant._id);
+                            const isOnline = Array.isArray(onlineUsers) && onlineUsers.includes(String(otherParticipant._id));
                             const lastMessageTimestamp = new Date(convo.updatedAt).toLocaleString([], {
                                 month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
                             });
 
                             return (
-                                <li key={convo._id}>
-                                    <Link to={`/chat/${otherParticipant._id}`} className="block p-4 hover:bg-gray-50 transition-colors">
+                                <Link key={convo._id} to={`/chat/${otherParticipant._id}`} className="block p-4 md:p-5 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors duration-200">
                                         <div className="flex justify-between items-center">
                                             <div className="flex items-center gap-3">
-                                                <span className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></span>
-                                                <p className="font-bold text-lg text-gray-800">{otherParticipant.name}</p>
+                                                <div 
+                                                    className="relative cursor-pointer group" 
+                                                    onClick={(e) => handleProfileClick(e, otherParticipant)}
+                                                    title="View Profile"
+                                                >
+                                                    <div className="w-12 h-12 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-xl group-hover:shadow-md transition-all">
+                                                        {(otherParticipant.name || 'U').charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></span>
+                                                </div>
+                                                <div>
+                                                    <p 
+                                                        className="font-bold text-lg text-gray-900 cursor-pointer hover:text-blue-600 hover:underline transition-colors inline-block"
+                                                        onClick={(e) => handleProfileClick(e, otherParticipant)}
+                                                        title="View Profile"
+                                                    >
+                                                        {otherParticipant.name || 'Unknown User'}
+                                                    </p>
+                                                    <p className="text-sm text-gray-500 truncate w-48 sm:w-64 md:w-96">
+                                                        {convo.lastMessage?.text || 'No messages yet'}
+                                                    </p>
+                                                </div>
                                             </div>
                                             <p className="text-xs text-gray-400">{convo.lastMessage ? lastMessageTimestamp : ''}</p>
                                         </div>
-                                        <p className="text-sm text-gray-600 truncate mt-1 pl-6">
-                                            {convo.lastMessage?.text || 'No messages yet'}
-                                        </p>
-                                    </Link>
-                                </li>
+                                </Link>
                             );
                         })}
-                    </ul>
+                    </div>
                 ) : (
-                    <p className="p-6 text-gray-500 text-center">You have no conversations yet.</p>
+                    <div className="text-center py-12">
+                        <div className="w-20 h-20 bg-blue-50 text-blue-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                        </div>
+                        <p className="text-gray-500 text-lg">You have no conversations yet.</p>
+                    </div>
                 )}
             </div>
         </div>

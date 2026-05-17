@@ -9,7 +9,8 @@ const {
     getGigById, 
     assignFreelancer, 
     completeGig,
-    getMyAssignedGigs
+    getMyAssignedGigs,
+    revertCompleteGig
 } = require('../controllers/gigController');
 const auth = require('../middleware/auth');
 
@@ -52,5 +53,9 @@ router.put('/assign/:gigId', auth, assignFreelancer);
 // @route  PUT api/gigs/complete/:gigId
 // @desc   Mark a gig as complete
 router.put('/complete/:gigId', auth, completeGig);
+
+// @route  PUT api/gigs/revert-complete/:gigId
+// @desc   Revert a completed gig back to In Progress
+router.put('/revert-complete/:gigId', auth, revertCompleteGig);
 
 module.exports = router;

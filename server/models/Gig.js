@@ -27,7 +27,7 @@ const GigSchema = new mongoose.Schema({
     skills: { type: [String], default: [] },
     locationText: { type: String }, // e.g. "Andheri, Mumbai"
     geo: {
-        type: { type: String, enum: ['Point'], default: 'Point' },
+        type: { type: String, enum: ['Point'] },
         coordinates: { type: [Number], default: undefined } // [lng, lat]
     },
     status: { 

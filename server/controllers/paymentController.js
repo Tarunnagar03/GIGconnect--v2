@@ -68,7 +68,7 @@ exports.createPaymentIntent = async (req, res) => {
             return res.status(401).json({ msg: 'Not authorized to pay for this gig' });
         }
 
-        let amountUsd = gig.budget;
+        let amountToCharge = gig.budget;
         let metadata = {
             gigId: gigId.toString(),
             userId: req.user.id
@@ -79,15 +79,16 @@ exports.createPaymentIntent = async (req, res) => {
             const milestone = Array.isArray(gig.milestones) ? gig.milestones[idx] : undefined;
             if (!milestone) return res.status(400).json({ msg: 'Invalid milestone' });
             if (milestone.status === 'paid') return res.status(400).json({ msg: 'Milestone already paid' });
-            amountUsd = milestone.amount;
+            amountToCharge = milestone.amount;
             metadata.milestoneIndex = String(idx);
         } else if (gig.paymentStatus === 'paid') {
             return res.status(400).json({ msg: 'Gig already paid' });
         }
 
         const paymentIntent = await stripe.paymentIntents.create({
-            amount: Math.round(amountUsd * 100), // Amount in cents
-            currency: 'usd',
+            amount: Math.round(amountToCharge * 100), // For INR, this is in paise (₹1 = 100 paise)
+            currency: 'inr', // Changed from usd to inr to support UPI, NetBanking, and Indian Cards
+            description: `GigConnect Escrow Payment - Gig ID: ${gigId}`, // Description is required for Indian regulations
             automatic_payment_methods: {
                 enabled: true,
             },
@@ -99,8 +100,8 @@ exports.createPaymentIntent = async (req, res) => {
             clientSecret: paymentIntent.client_secret,
         });
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Server Error');
+            console.error("Payment Intent Error:", err);
+            res.status(400).json({ msg: err.message || 'Failed to create payment intent' });
     }
 };
 

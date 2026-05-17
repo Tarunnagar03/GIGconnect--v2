@@ -9,7 +9,8 @@ const {
   setUserActive,
   listGigs,
   deleteGig,
-  listTransactions
+  listTransactions,
+  listContacts
 } = require('../controllers/adminController');
 
 router.use(auth, requireRole('Admin'));
@@ -23,5 +24,6 @@ router.delete('/gigs/:gigId', deleteGig);
 
 router.get('/transactions', listTransactions);
 
-module.exports = router;
+router.get('/contacts', listContacts);
 
+module.exports = router;

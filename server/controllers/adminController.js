@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Gig = require('../models/Gig');
 const Transaction = require('../models/Transaction');
+const Contact = require('../models/Contact'); // Import Contact Model
 
 exports.getOverview = async (req, res) => {
   try {
@@ -17,6 +18,17 @@ exports.getOverview = async (req, res) => {
       totals: { users, gigs, transactions },
       gigs: { open: openGigs, completed: completedGigs }
     });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+};
+
+// Get all Contact Us messages for Admin Dashboard
+exports.listContacts = async (req, res) => {
+  try {
+    const contacts = await Contact.find({}).sort({ createdAt: -1 });
+    res.json(contacts);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');
@@ -122,4 +134,3 @@ exports.listTransactions = async (req, res) => {
     res.status(500).send('Server Error');
   }
 };
-

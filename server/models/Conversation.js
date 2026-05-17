@@ -20,7 +20,8 @@ const ConversationSchema = new mongoose.Schema({
     // An array of the two users in the chat
     participants: [{
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'User',
+        index: true
     }],
     lastMessage: {
         text: String,

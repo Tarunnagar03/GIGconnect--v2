@@ -69,7 +69,10 @@ const TwoFactorAuthPage = () => {
 
     return (
         <div>
-            <Link to="/settings/security" className="inline-block mb-6 text-blue-600 hover:underline">&larr; Back to Security</Link>
+            <Link to="/settings/security" className="inline-flex items-center gap-2 mb-6 text-gray-600 hover:text-blue-600 font-semibold bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow hover:border-blue-200 transition-all group">
+                <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                Back to Security
+            </Link>
             <div className="bg-white p-8 rounded-lg shadow-md">
                 <h1 className="text-2xl font-bold mb-4">Two-Factor Authentication (2FA)</h1>
                 {error && <p className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</p>}

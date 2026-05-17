@@ -143,10 +143,10 @@ exports.assignFreelancer = async (req, res) => {
         if (gig.client.toString() !== req.user.id) return res.status(401).json({ msg: 'User not authorized' });
         if (gig.status !== 'Open') return res.status(400).json({ msg: 'Gig is not open for assignment' });
 
-        gig.assignedFreelancer = req.body.freelancerId;
-        gig.status = 'In Progress';
-        await gig.save();
-        const updatedGig = await Gig.findById(gig._id).populate('assignedFreelancer', 'name username');
+        const updatedGig = await Gig.findByIdAndUpdate(gig._id, {
+            $set: { assignedFreelancer: req.body.freelancerId, status: 'In Progress' }
+        }, { new: true }).populate('assignedFreelancer', 'name username');
+        
         res.json(updatedGig);
     } catch (err) {
         console.error(err.message);
@@ -162,12 +162,31 @@ exports.completeGig = async (req, res) => {
         if (gig.client.toString() !== req.user.id) return res.status(401).json({ msg: 'User not authorized' });
         if (gig.status !== 'In Progress') return res.status(400).json({ msg: 'Gig must be In Progress to be completed' });
 
-        gig.status = 'Completed';
-        await gig.save();
-        res.json(gig);
+        const updatedGig = await Gig.findByIdAndUpdate(gig._id, {
+            $set: { status: 'Completed' }
+        }, { new: true });
+        res.json(updatedGig);
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error');
+        console.error("Complete Gig error:", err);
+        res.status(500).json({ msg: err.message || 'Server Error' });
+    }
+};
+
+// Revert a completed gig back to In Progress
+exports.revertCompleteGig = async (req, res) => {
+    try {
+        const gig = await Gig.findById(req.params.gigId);
+        if (!gig) return res.status(404).json({ msg: 'Gig not found' });
+        if (gig.client.toString() !== req.user.id) return res.status(401).json({ msg: 'User not authorized' });
+        if (gig.status !== 'Completed') return res.status(400).json({ msg: 'Gig is not in Completed status' });
+
+        const updatedGig = await Gig.findByIdAndUpdate(gig._id, {
+            $set: { status: 'In Progress' }
+        }, { new: true });
+        res.json(updatedGig);
+    } catch (err) {
+        console.error("Revert Gig error:", err);
+        res.status(500).json({ msg: err.message || 'Server Error' });
     }
 };
 

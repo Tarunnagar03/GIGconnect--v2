@@ -31,6 +31,7 @@ import GigDetailPage from './pages/GigDetailPage';
 import ChatPage from './pages/ChatPage';
 import InboxPage from './pages/InboxPage';
 import SettingsPage from './pages/SettingsPage';
+import BillingPage from './pages/BillingPage';
 import SecurityPage from './pages/SecurityPage';
 import DeleteAccountPage from './pages/DeleteAccountPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
@@ -50,9 +51,12 @@ import FindFreelancers from './pages/FindFreelancers.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
 
 // --- ALL IMPORTS ARE CORRECTED ---
+import ManageGigsPage from './pages/ManageGigsPage';
 import MyCompletedProjectsPage from './pages/MyCompletedProjectsPage';
 import AboutMePage from './pages/AboutMePage';
 import ClientProjectsPage from './pages/ClientProjectsPage';
+import ClientProfilePage from './pages/ClientProfilePage';
+import HelpPage from './pages/HelpPage';
 
 // Helper component to redirect if logged in
 const AuthRedirect = ({ children }) => {
@@ -89,6 +93,7 @@ function App() {
                     <Route path="/chat/:recipientId" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
                     <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
                     <Route path="/settings/security" element={<PrivateRoute><SecurityPage /></PrivateRoute>} />
+                    <Route path="/settings/billing" element={<PrivateRoute><BillingPage /></PrivateRoute>} />
                     <Route path="/settings/password" element={<PrivateRoute><ChangePasswordPage /></PrivateRoute>} />
                     <Route path="/settings/2fa" element={<PrivateRoute><TwoFactorAuthPage /></PrivateRoute>} />
                     <Route path="/settings/delete" element={<PrivateRoute><DeleteAccountPage /></PrivateRoute>} />
@@ -107,7 +112,10 @@ function App() {
                     {/* --- ALL PROJECT ROUTES --- */}
                     <Route path="/my-projects" element={<PrivateRoute><MyCompletedProjectsPage /></PrivateRoute>} />
                     <Route path="/my-client-projects" element={<PrivateRoute><ClientProjectsPage /></PrivateRoute>} />
+                    <Route path="/manage-gigs" element={<PrivateRoute><ManageGigsPage /></PrivateRoute>} />
                     <Route path="/about-me" element={<PrivateRoute><AboutMePage /></PrivateRoute>} />
+                    <Route path="/client-profile/:clientId" element={<PrivateRoute><ClientProfilePage /></PrivateRoute>} />
+                    <Route path="/help" element={<HelpPage />} />
 
                     <Route path="*" element={<Navigate to="/" />} />
                 </Routes>

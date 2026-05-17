@@ -16,35 +16,110 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { AuthContext } from '../context/AuthContext';
 
-// Helper for textarea inputs
-const ProfileTextArea = ({ name, label, value, onChange, placeholder }) => (
-    <div>
-        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <textarea
-            id={name}
-            name={name}
-            rows="4"
-            value={value}
-            onChange={onChange}
-            className="w-full p-3 border rounded-md"
-            placeholder={placeholder}
-        ></textarea>
-        <p className="text-xs text-gray-500 mt-1">Please use commas to separate items (e.g., Item 1, Item 2)</p>
-    </div>
-);
+// Helper: Premium Dynamic List Builder for Arrays (Skills, Services, Education, etc.)
+const DynamicListInput = ({ name, label, items, onChange, placeholder, required }) => {
+    const [inputValue, setInputValue] = useState('');
+
+    const handleAdd = (e) => {
+        e.preventDefault();
+        const trimmed = inputValue.trim();
+        if (trimmed && !items.includes(trimmed)) {
+            onChange(name, [...items, trimmed]);
+            setInputValue('');
+        }
+    };
+
+    const handleRemove = (indexToRemove) => {
+        onChange(name, items.filter((_, index) => index !== indexToRemove));
+    };
+
+    return (
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+                {label} {required && <span className="text-red-500">*</span>}
+            </label>
+            <div className="flex gap-2 mb-3">
+                <input
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(e); } }}
+                    className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                    placeholder={placeholder}
+                />
+                <button type="button" onClick={handleAdd} className="bg-blue-100 text-blue-700 px-6 font-bold rounded-xl hover:bg-blue-200 transition-colors shadow-sm">
+                    Add
+                </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                {items.map((item, index) => (
+                    <span key={index} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold px-4 py-1.5 rounded-full flex items-center gap-2 shadow-sm animate-fade-in">
+                        {item}
+                        <button type="button" onClick={() => handleRemove(index)} className="hover:text-red-200 focus:outline-none flex items-center justify-center transition-colors">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                    </span>
+                ))}
+                {items.length === 0 && <span className="text-sm text-gray-400 italic font-medium px-2">No items added yet.</span>}
+            </div>
+        </div>
+    );
+};
+
+// Helper: Premium Dynamic List Builder for Education (Objects)
+const DynamicEducationInput = ({ items, onChange }) => {
+    const [course, setCourse] = useState('');
+    const [college, setCollege] = useState('');
+
+    const handleAdd = (e) => {
+        e.preventDefault();
+        if (course.trim() && college.trim()) {
+            onChange('education', [...items, { course: course.trim(), college: college.trim() }]);
+            setCourse('');
+            setCollege('');
+        }
+    };
+
+    return (
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Education & Degrees</label>
+            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                <input type="text" placeholder="Degree/Course (e.g., B.Tech in CS)" value={course} onChange={e => setCourse(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(e); } }} className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                <input type="text" placeholder="University/College (e.g., IIT Delhi)" value={college} onChange={e => setCollege(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(e); } }} className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                <button type="button" onClick={handleAdd} className="bg-blue-100 text-blue-700 px-6 py-3 font-bold rounded-xl hover:bg-blue-200 transition-colors shadow-sm whitespace-nowrap">Add</button>
+            </div>
+            <div className="flex flex-col gap-2">
+                {items.map((item, index) => {
+                    const isObj = typeof item === 'object' && item !== null;
+                    return (
+                        <div key={index} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm animate-fade-in">
+                            <div>
+                                <p className="font-bold text-gray-800 text-sm">{isObj ? item.course : item}</p>
+                                {isObj && item.college && <p className="text-xs text-gray-500 mt-0.5">{item.college}</p>}
+                            </div>
+                            <button type="button" onClick={() => onChange('education', items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 p-2 transition-colors focus:outline-none"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                        </div>
+                    );
+                })}
+                {items.length === 0 && <span className="text-sm text-gray-400 italic font-medium px-2">No education added yet.</span>}
+            </div>
+        </div>
+    );
+};
 
 const CreateProfile = () => {
     const [formData, setFormData] = useState({
-        skills: '', rate: '', bio: '', portfolio: '',
-        services: '', education: '', achievements: '', // Added new fields
-        locationText: '',
-        geo: null
+        skills: [], rate: '', bio: '', portfolio: '',
+        services: [], education: [], achievements: [],
+        locationText: '', experience: { years: '', months: '' }
     });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
     const [isEditMode, setIsEditMode] = useState(false);
     const navigate = useNavigate();
-    const { refreshProfile } = useContext(AuthContext);
+    const { auth, refreshProfile } = useContext(AuthContext);
+    const isClient = auth.user?.role === 'Client';
 
     // Fetch existing profile data
     useEffect(() => {
@@ -53,16 +128,21 @@ const CreateProfile = () => {
                 const res = await api.get('/profiles/me');
                 if (res.data) {
                     setFormData({
-                        skills: res.data.skills.join(', '),
+                        skills: res.data.skills || [],
                         rate: res.data.rate || '',
                         bio: res.data.bio || '',
                         portfolio: res.data.portfolio || '',
-                        // --- Pre-fill new fields ---
-                        services: (res.data.services || []).join(', '),
-                        education: (res.data.education || []).join(', '),
-                        achievements: (res.data.achievements || []).join(', '),
+                        services: res.data.services || [],
+                        education: (res.data.education || []).map(item => {
+                            if (typeof item === 'string') {
+                                if (item === '[object Object]') return null;
+                                try { return JSON.parse(item); } catch { return item; }
+                            }
+                            return item;
+                        }).filter(Boolean),
+                        achievements: res.data.achievements || [],
                         locationText: res.data.locationText || '',
-                        geo: res.data.geo || null
+                        experience: res.data.experience || { years: '', months: '' }
                     });
                     setIsEditMode(true);
                 }
@@ -75,153 +155,160 @@ const CreateProfile = () => {
         fetchProfile();
     }, []);
 
-    const { skills, rate, bio, portfolio, services, education, achievements, locationText, geo } = formData;
+    const { skills, rate, bio, portfolio, services, education, achievements, locationText, experience } = formData;
     const onChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-
-    const captureLocation = () => {
-        setError('');
-        if (!navigator.geolocation) {
-            setError('Geolocation is not supported by your browser.');
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                const { latitude, longitude } = pos.coords;
-                setFormData((prev) => ({
-                    ...prev,
-                    geo: { type: 'Point', coordinates: [longitude, latitude] }
-                }));
-            },
-            () => setError('Unable to fetch your location. Please allow location access and try again.'),
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
-    };
+    const handleListChange = (name, newList) => setFormData(prev => ({ ...prev, [name]: newList }));
+    const handleExperienceChange = (e) => setFormData(prev => ({ ...prev, experience: { ...prev.experience, [e.target.name]: e.target.value } }));
 
     const onSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setSuccess('');
+
+        if (!isClient) {
+            if (skills.length === 0) {
+                setError('Please add at least one professional skill.');
+                return;
+            }
+            
+            if (services.length === 0) {
+                setError('Please add at least one service you offer.');
+                return;
+            }
+        }
+
         try {
-            // Send all fields, including new ones
-            await api.post('/profiles', formData);
+            const payload = {
+                ...formData,
+                education: formData.education.map(item => typeof item === 'object' ? JSON.stringify(item) : item)
+            };
+
+            await api.post('/profiles', payload);
             refreshProfile();
-            alert(isEditMode ? 'Profile updated successfully!' : 'Profile created successfully!');
-            navigate('/dashboard');
+            setSuccess(isEditMode ? 'Profile updated successfully!' : 'Profile created successfully!');
+            setTimeout(() => navigate('/dashboard'), 2000);
         } catch (err) {
             setError(err.response?.data?.msg || 'Failed to save profile.');
         }
     };
 
-    const handleDeleteProfile = async () => {
-        const isConfirmed = window.confirm(
-            'Are you sure you want to delete your freelancer profile? Your user account will remain active.'
-        );
-        if (isConfirmed) {
-            try {
-                await api.delete('/profiles'); 
-                alert('Your freelancer profile has been deleted.');
-                refreshProfile();
-                navigate('/dashboard');
-            } catch (err) {
-                setError('Failed to delete profile. Please try again.');
-                console.error(err);
-            }
-        }
-    };
 
     if (loading) {
         return <p className="text-center mt-10">Loading profile...</p>;
     }
 
     return (
-        <div className="max-w-2xl mx-auto">
-            <Link to="/dashboard" className="inline-block mb-6 text-blue-600 hover:underline">
-                &larr; Back to Dashboard
+        <div className="max-w-3xl mx-auto animate-fade-in">
+            <Link to="/dashboard" className="inline-flex items-center gap-2 mb-6 text-gray-600 hover:text-blue-600 font-semibold bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow hover:border-blue-200 transition-all group">
+                <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                Back to Dashboard
             </Link>
             
-            <h1 className="text-3xl font-bold mb-6">
-                {isEditMode ? 'Edit Your Freelancer Profile' : 'Create Your Freelancer Profile'}
+            <h1 className="text-4xl font-extrabold mb-2 text-gray-800 tracking-tight">
+                {isEditMode ? (isClient ? 'Edit Company Profile' : 'Edit Your Freelancer Profile') : (isClient ? 'Create Company Profile' : 'Create Your Freelancer Profile')}
             </h1>
-            <p className="text-gray-600 mb-6">This is your public-facing profile. Clients will see this when you apply for gigs.</p>
+            <p className="text-lg text-gray-500 mb-8">{isClient ? 'Tell freelancers about your business to attract top talent. Leave blank to remove.' : 'Set up your professional identity. Leaving a field blank will remove it from your profile.'}</p>
             
-            <form onSubmit={onSubmit} className="bg-white p-8 rounded-lg shadow-md space-y-6">
-                {error && <p className="text-red-500 bg-red-100 p-3 rounded text-center font-medium">{error}</p>}
+            <form onSubmit={onSubmit} className="space-y-8 pb-10">
+                {error && <p className="text-red-700 bg-red-50 border border-red-200 p-4 rounded-xl text-center font-bold">{error}</p>}
+                {success && <p className="text-green-700 bg-green-50 border border-green-200 p-4 rounded-xl text-center font-bold animate-fade-in">{success}</p>}
                 
-                <div>
-                    <label htmlFor="skills" className="block text-sm font-medium text-gray-700 mb-1">Skills <span className="text-red-500">*</span></label>
-                    <input type="text" id="skills" name="skills" value={skills} onChange={onChange} required className="w-full p-3 border rounded-md" placeholder="e.g., React.js, C# Framework, .NET Developer"/>
-                    <p className="text-xs text-gray-500 mt-1">Please use comma-separated values (e.g., HTML, CSS, JavaScript)</p>
-                </div>
+                {!isClient ? (
+                    <>
+                        {/* --- SECTION 1: Basic Info (Freelancer) --- */}
+                        <div className="bg-white p-8 md:p-10 rounded-2xl shadow-sm border border-gray-100 space-y-6">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-2 border-b border-gray-100 pb-4">Basic Information</h2>
+                            <DynamicListInput name="skills" label="Professional Skills" items={skills} onChange={handleListChange} placeholder="e.g., React.js, Copywriting, Node.js" required={true} />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label htmlFor="rate" className="block text-sm font-medium text-gray-700 mb-1">Hourly Rate (₹)</label>
+                                    <input type="number" id="rate" name="rate" value={rate} onChange={onChange} min="0" className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" placeholder="e.g., 50"/>
+                                </div>
+                                <div>
+                                    <label htmlFor="portfolio" className="block text-sm font-medium text-gray-700 mb-1">Portfolio/Website</label>
+                                    <input type="text" id="portfolio" name="portfolio" value={portfolio} onChange={onChange} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" placeholder="https://yourwebsite.com"/>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label htmlFor="exp-years" className="block text-sm font-medium text-gray-700 mb-1">Experience (Years)</label>
+                                    <input type="number" id="exp-years" name="years" value={experience.years} onChange={handleExperienceChange} min="0" max="50" className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" placeholder="e.g., 3"/>
+                                </div>
+                                <div>
+                                    <label htmlFor="exp-months" className="block text-sm font-medium text-gray-700 mb-1">Experience (Months)</label>
+                                    <input type="number" id="exp-months" name="months" value={experience.months} onChange={handleExperienceChange} min="0" max="11" className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" placeholder="e.g., 6"/>
+                                </div>
+                            </div>
+                        </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label htmlFor="rate" className="block text-sm font-medium text-gray-700 mb-1">Hourly Rate ($)</label>
-                        <input type="number" id="rate" name="rate" value={rate} onChange={onChange} min="0" className="w-full p-3 border rounded-md" placeholder="e.g., 50"/>
-                    </div>
-                    <div>
-                        <label htmlFor="portfolio" className="block text-sm font-medium text-gray-700 mb-1">Portfolio/Website <span className="text-gray-400">(Optional)</span></label>
-                        <input type="text" id="portfolio" name="portfolio" value={portfolio} onChange={onChange} className="w-full p-3 border rounded-md" placeholder="https://yourwebsite.com"/>
-                    </div>
-                </div>
+                        {/* --- SECTION 2: Professional Details (Freelancer) --- */}
+                        <div className="bg-white p-8 md:p-10 rounded-2xl shadow-sm border border-gray-100 space-y-6">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-2 border-b border-gray-100 pb-4">Professional Details</h2>
+                            <DynamicListInput name="services" label="Services You Offer" items={services} onChange={handleListChange} placeholder="e.g., Web Development, UI/UX Design" required={true} />
+                            <DynamicEducationInput items={education} onChange={handleListChange} />
+                            <DynamicListInput name="achievements" label="Certifications & Achievements" items={achievements} onChange={handleListChange} placeholder="e.g., AWS Certified Developer, Best UI Award" />
+                        </div>
 
-                <div>
-                    <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">About You (Bio)</label>
-                    <textarea id="bio" name="bio" rows="5" value={bio} onChange={onChange} className="w-full p-3 border rounded-md" placeholder="Tell clients a bit about your experience..."></textarea>
-                </div>
+                        {/* --- SECTION 3: About & Location (Freelancer) --- */}
+                        <div className="bg-white p-8 md:p-10 rounded-2xl shadow-sm border border-gray-100 space-y-6">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-2 border-b border-gray-100 pb-4">About You & Location</h2>
+                            <div>
+                                <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">About You (Bio)</label>
+                                <textarea id="bio" name="bio" rows="5" value={bio} onChange={onChange} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white resize-none" placeholder="Tell clients a bit about your experience..."></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="locationText" className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                                <input type="text" id="locationText" name="locationText" value={locationText} onChange={onChange} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" placeholder="e.g., Meerut, Uttar Pradesh" />
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div className="bg-white p-8 md:p-10 rounded-2xl shadow-sm border border-gray-100 space-y-6">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-2 border-b border-gray-100 pb-4">Business / Company Details</h2>
+                        
+                        <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3 shadow-sm">
+                            <span className="text-xl">💡</span>
+                            <p className="text-sm text-blue-900 leading-relaxed">
+                                To update your official <strong>Company Name</strong> or <strong>Personal Name</strong>, please visit your <Link to="/settings/details" className="font-bold underline hover:text-blue-700">Account Settings</Link>.
+                            </p>
+                        </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2">
-                        <label htmlFor="locationText" className="block text-sm font-medium text-gray-700 mb-1">Location (for hyperlocal search)</label>
-                        <input
-                            type="text"
-                            id="locationText"
-                            name="locationText"
-                            value={locationText}
-                            onChange={onChange}
-                            className="w-full p-3 border rounded-md"
-                            placeholder="e.g., Meerut, Uttar Pradesh"
+                        <div>
+                            <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">About Your Business / Company Info</label>
+                            <textarea id="bio" name="bio" rows="6" value={bio} onChange={onChange} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white resize-none" placeholder="Describe your company, industry, how long you've been running, and the kind of projects you usually hire for..."></textarea>
+                        </div>
+                        
+                        <DynamicListInput 
+                            name="services"
+                            label="Industry / Services Provided"
+                            items={services}
+                            onChange={handleListChange}
+                            placeholder="e.g., Software Development, FinTech, E-Commerce"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Optional, but recommended so clients nearby can find you.</p>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label htmlFor="portfolio" className="block text-sm font-medium text-gray-700 mb-1">Company Website</label>
+                                <input type="text" id="portfolio" name="portfolio" value={portfolio} onChange={onChange} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" placeholder="https://yourcompany.com"/>
+                            </div>
+                            <div>
+                                <label htmlFor="locationText" className="block text-sm font-medium text-gray-700 mb-1">Headquarters / Location</label>
+                                <input type="text" id="locationText" name="locationText" value={locationText} onChange={onChange} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" placeholder="e.g., New York, USA"/>
+                            </div>
+                        </div>
                     </div>
-                    <div className="flex items-end">
-                        <button
-                            type="button"
-                            onClick={captureLocation}
-                            className="w-full bg-gray-900 text-white py-3 px-4 rounded-md hover:bg-black"
-                        >
-                            Use my GPS
-                        </button>
-                    </div>
-                </div>
-                {geo?.coordinates?.length === 2 && (
-                    <p className="text-xs text-gray-500">
-                        Saved GPS: {Number(geo.coordinates[1]).toFixed(5)}, {Number(geo.coordinates[0]).toFixed(5)}
-                    </p>
                 )}
 
-                {/* --- NEW FIELDS ADDED --- */}
-                <ProfileTextArea name="services" label="Services You Offer" value={services} onChange={onChange} placeholder="e.g., Web Development, UI/UX Design" />
-                <ProfileTextArea name="education" label="Education" value={education} onChange={onChange} placeholder="e.g., BCA from IIMS Anuyogipuram Meerut, MCA from Dewan Institute Partapur Meerut" />
-                <ProfileTextArea name="achievements" label="Achievements" value={achievements} onChange={onChange} placeholder="e.g., Certified AWS Developer, 100+ Projects Completed" />
-
-                <div className="flex justify-end gap-4 border-t pt-6">
-                    <button type="button" onClick={() => navigate('/dashboard')} className="bg-white text-gray-700 py-2 px-6 rounded-lg border border-gray-300 hover:bg-gray-50 font-medium">
+                {/* --- STICKY ACTION BUTTONS --- */}
+                <div className="flex justify-end gap-4 sticky bottom-6 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.1)] border border-gray-200 z-10">
+                    <button type="button" onClick={() => navigate('/dashboard')} className="bg-white text-gray-700 py-3 px-8 rounded-xl border border-gray-200 hover:bg-gray-50 font-bold transition-colors">
                         Cancel
                     </button>
-                    <button type="submit" className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700">
+                    <button type="submit" className="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 hover:-translate-y-1 shadow-md transition-all">
                         Save Profile
                     </button>
                 </div>
             </form>
-
-            {isEditMode && (
-                <div className="mt-8 bg-white p-6 rounded-lg shadow-md border-2 border-red-500">
-                    <h3 className="text-xl font-bold text-red-700 mb-3">Delete Profile</h3>
-                    <p className="text-gray-600 mb-4">This will remove your public freelancer profile (skills, bio, etc.). Your user account and login will not be affected.</p>
-                    <button onClick={handleDeleteProfile} className="bg-red-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-red-700">
-                        Delete My Profile
-                    </button>
-                </div>
-            )}
         </div>
     );
 };
