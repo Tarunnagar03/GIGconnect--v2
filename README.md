@@ -104,5 +104,5 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 For any inquiries or support, please contact:
 - **Name**: Tarun Nagar
-- **Email**: [youremail@example.com](mailto:youremail@example.com)
+- **Email**: [youremail@example.com](nagart16@gmail.com)
 - **GitHub**: [Tarunnagar03](https://github.com/Tarunnagar03)
