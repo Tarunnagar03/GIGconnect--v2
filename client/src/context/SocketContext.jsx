@@ -19,12 +19,15 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { socket } from '../socket';
-import { AuthContext } from './AuthContext';
+import { useAuth } from './AuthContext';
 
-export const SocketContext = createContext();
+const SocketContext = createContext();
+
+// Enterprise Best Practice: Custom Hook to consume Context (Fixes Vite HMR Warning)
+export const useSocket = () => useContext(SocketContext);
 
 export const SocketProvider = ({ children }) => {
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const [onlineUsers, setOnlineUsers] = useState([]); // State to hold online users
 
     useEffect(() => {
@@ -53,7 +56,7 @@ export const SocketProvider = ({ children }) => {
                 socket.disconnect();
             };
         }
-    }, [auth]);
+    }, [auth.isAuthenticated, auth.user?.id]);
 
     // Make the socket instance and the list of online users available to the whole app
     const value = { socket, onlineUsers };

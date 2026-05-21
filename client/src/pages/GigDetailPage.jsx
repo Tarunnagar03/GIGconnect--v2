@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import api from '../api';
 import { AuthContext } from '../context/AuthContext';
 import { formatCurrency } from '../utils/currencyFormatter';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 const GigDetailPage = () => {
     const { gigId } = useParams();
     const { auth } = useContext(AuthContext);
     const navigate = useNavigate();
+    const location = useLocation();
+    const queryTab = new URLSearchParams(location.search).get('tab');
 
     const [gig, setGig] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -15,12 +18,23 @@ const GigDetailPage = () => {
     const [proposalCount, setProposalCount] = useState(0); // State to hold proposal count
     const [mySkills, setMySkills] = useState([]);
     const [clientReviews, setClientReviews] = useState([]);
-    const [activeTab, setActiveTab] = useState('overview');
+    const [activeTab, setActiveTab] = useState(queryTab || 'overview');
     
     // --- WORKSPACE STATE (Simulating Backend for UI Testing) ---
     const [workspaceDeliverables, setWorkspaceDeliverables] = useState([]);
     const [deliverableText, setDeliverableText] = useState('');
     const [deliverableFile, setDeliverableFile] = useState(null);
+    
+    // --- TIME TRACKER STATE ---
+    const [isTracking, setIsTracking] = useState(false);
+    const [trackedSeconds, setTrackedSeconds] = useState(0);
+
+    // Sync active tab state if URL changes externally
+    useEffect(() => {
+        if (queryTab && ['overview', 'workspace', 'payments'].includes(queryTab)) {
+            setActiveTab(queryTab);
+        }
+    }, [queryTab]);
 
     useEffect(() => {
         const fetchGig = async () => {
@@ -52,6 +66,17 @@ const GigDetailPage = () => {
         };
         fetchGig();
     }, [gigId, auth.user?.id]); // Rerun if user ID changes
+
+    // Time Tracker Interval
+    useEffect(() => {
+        let interval = null;
+        if (isTracking) {
+            interval = setInterval(() => setTrackedSeconds(s => s + 1), 1000);
+        } else if (!isTracking && trackedSeconds !== 0) {
+            clearInterval(interval);
+        }
+        return () => clearInterval(interval);
+    }, [isTracking, trackedSeconds]);
 
     // Function to fetch the number of proposals for the client
     const fetchProposalCount = async (id) => {
@@ -197,6 +222,20 @@ const GigDetailPage = () => {
         setDeliverableFile(null);
     };
 
+    const handleLogTime = () => {
+        const hours = Math.floor(trackedSeconds / 3600);
+        const minutes = Math.floor((trackedSeconds % 3600) / 60);
+        const newDel = {
+            _id: Date.now(),
+            text: `⏱️ Logged Time: ${hours}h ${minutes}m\nNote: Work session completed.`,
+            submittedAt: new Date().toISOString(),
+            status: 'Approved' // Time logs auto-approve for simplicity here
+        };
+        setWorkspaceDeliverables([newDel, ...workspaceDeliverables]);
+        setIsTracking(false);
+        setTrackedSeconds(0);
+    };
+
     const handleApproveWork = (id) => {
         if (!window.confirm("Approve this delivery? (This will authorize payment release)")) return;
         setWorkspaceDeliverables(prev => prev.map(d => d._id === id ? {...d, status: 'Approved'} : d));
@@ -209,12 +248,27 @@ const GigDetailPage = () => {
         }
     };
 
+    const handleTabChange = (tabName) => {
+        setActiveTab(tabName);
+        navigate(`?tab=${tabName}`, { replace: true });
+    }
+
     return (
         <div className="max-w-6xl mx-auto animate-fade-in pb-24 lg:pb-12">
-            <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 mb-6 text-gray-600 hover:text-blue-600 font-semibold bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow hover:border-blue-200 transition-all group">
-                <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                Back
-            </button>
+            
+            {/* --- ENTERPRISE BREADCRUMBS --- */}
+            <nav className="flex items-center text-sm font-bold text-gray-400 mb-6 space-x-2 animate-fade-in uppercase tracking-wider">
+                <Link to="/dashboard" className="hover:text-blue-600 transition-colors flex items-center gap-1">
+                    <svg className="w-4 h-4 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                    Home
+                </Link>
+                <span>/</span>
+                <Link to={auth?.user?.role === 'Freelancer' ? '/my-projects' : '/manage-gigs'} className="hover:text-blue-600 transition-colors">
+                    Projects
+                </Link>
+                <span>/</span>
+                <span className="text-gray-800 truncate max-w-[200px] sm:max-w-md">{gig?.title || 'Details'}</span>
+            </nav>
 
             <div className="flex flex-col lg:flex-row gap-8">
                 
@@ -223,12 +277,13 @@ const GigDetailPage = () => {
                     {/* Tabs Header */}
                     {(isClientOwner || isAssignedFreelancer) && (gig.status === 'In Progress' || gig.status === 'Completed') && (
                         <div className="flex space-x-2 border-b border-gray-200 mb-2 overflow-x-auto scrollbar-hide bg-white px-6 pt-4 rounded-3xl shadow-sm border border-gray-100">
-                            <button onClick={() => setActiveTab('overview')} className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors focus:outline-none whitespace-nowrap ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Overview</button>
-                            <button onClick={() => setActiveTab('workspace')} className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors focus:outline-none whitespace-nowrap ${activeTab === 'workspace' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Workspace 📂</button>
-                            <button onClick={() => setActiveTab('payments')} className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors focus:outline-none whitespace-nowrap ${activeTab === 'payments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Payments 💳</button>
+                            <button onClick={() => handleTabChange('overview')} className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors focus:outline-none whitespace-nowrap ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Overview</button>
+                            <button onClick={() => handleTabChange('workspace')} className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors focus:outline-none whitespace-nowrap ${activeTab === 'workspace' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Workspace 📂</button>
+                            <button onClick={() => handleTabChange('payments')} className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors focus:outline-none whitespace-nowrap ${activeTab === 'payments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Payments 💳</button>
                         </div>
                     )}
 
+                    <ErrorBoundary componentName="Overview Tab">
                     {activeTab === 'overview' && (
                         <div className="bg-white p-8 md:p-10 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden animate-fade-in">
                             {/* Top decorative gradient */}
@@ -266,8 +321,8 @@ const GigDetailPage = () => {
                                     {gig.skills.map((skill, index) => {
                                         const isMatch = isFreelancer && lowerMySkills.includes(skill.toLowerCase());
                                         return (
-                                            <span 
-                                                key={index} 
+                                        <span 
+                                            key={skill} 
                                                 className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
                                                     isMatch 
                                                         ? 'bg-green-50 text-green-700 border-green-200 shadow-sm flex items-center gap-1.5' 
@@ -284,7 +339,9 @@ const GigDetailPage = () => {
                         )}
                         </div>
                     )}
+                    </ErrorBoundary>
 
+                    <ErrorBoundary componentName="Workspace Tab">
                     {activeTab === 'workspace' && (
                         <div className="bg-white p-8 md:p-10 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden animate-fade-in">
                             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
@@ -295,6 +352,27 @@ const GigDetailPage = () => {
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                                 {/* --- Main Submission Area --- */}
                                 <div className="lg:col-span-2 space-y-6">
+                                    {/* TIME TRACKER WIDGET */}
+                                    {isAssignedFreelancer && gig.status === 'In Progress' && (
+                                        <div className="bg-gradient-to-r from-slate-800 to-gray-900 rounded-2xl p-6 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+                                            <div className="flex items-center gap-4 text-white">
+                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-inner ${isTracking ? 'bg-red-500 animate-pulse' : 'bg-gray-700'}`}>⏱️</div>
+                                                <div>
+                                                    <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Time Tracker</p>
+                                                    <p className="text-3xl font-mono font-black tracking-wider">
+                                                        {String(Math.floor(trackedSeconds / 3600)).padStart(2, '0')}:
+                                                        {String(Math.floor((trackedSeconds % 3600) / 60)).padStart(2, '0')}:
+                                                        {String(trackedSeconds % 60).padStart(2, '0')}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-3 w-full sm:w-auto">
+                                                <button onClick={() => setIsTracking(!isTracking)} className={`flex-1 sm:flex-none px-6 py-3 rounded-xl font-bold transition-all shadow-md ${isTracking ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-green-500 hover:bg-green-600 text-white'}`}>{isTracking ? 'Pause' : 'Start'}</button>
+                                                {trackedSeconds > 60 && <button onClick={handleLogTime} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md">Log Time</button>}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {isAssignedFreelancer && gig.status === 'In Progress' ? (
                                         <form onSubmit={handleDeliverableSubmit} className="bg-gray-50 border border-gray-200 rounded-2xl p-6 transition-all focus-within:border-blue-300 focus-within:shadow-md">
                                             <h3 className="font-extrabold text-gray-800 mb-4 flex items-center gap-2">
@@ -424,7 +502,9 @@ const GigDetailPage = () => {
                             </div>
                         </div>
                     )}
+                    </ErrorBoundary>
 
+                    <ErrorBoundary componentName="Payments Tab">
                     {activeTab === 'payments' && (
                         <div className="bg-white p-8 md:p-10 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden animate-fade-in">
                             <h2 className="text-2xl font-extrabold text-gray-900 mb-6">Milestones & Payments</h2>
@@ -434,27 +514,56 @@ const GigDetailPage = () => {
                                     <span className="font-bold text-gray-700">Main Project Budget</span>
                                     <span className="font-extrabold text-green-600 text-xl">{formatCurrency(gig.budget)}</span>
                                 </div>
-                                <div className="p-6">
-                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-3 h-3 rounded-full ${gig.paymentStatus === 'paid' ? 'bg-green-500' : 'bg-yellow-400 animate-pulse'}`}></div>
-                                            <span className="font-bold text-gray-800">Status: <span className="uppercase tracking-wider">{gig.paymentStatus || 'Pending'}</span></span>
+                                {gig.milestones && gig.milestones.length > 0 ? (
+                                    <div className="p-6">
+                                        <h4 className="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider">Milestone Breakdown</h4>
+                                        <div className="space-y-4">
+                                            {gig.milestones.map((m, idx) => (
+                                                <div key={idx} className={`flex items-center justify-between border ${m.status === 'paid' ? 'border-green-200 bg-green-50/30' : 'border-gray-200'} p-4 rounded-xl`}>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${m.status === 'paid' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>{idx + 1}</div>
+                                                        <div>
+                                                            <p className="font-bold text-gray-800">{m.title}</p>
+                                                            <p className={`text-xs font-bold mt-1 uppercase tracking-wider ${m.status === 'paid' ? 'text-green-600' : 'text-yellow-600'}`}>
+                                                                {m.status === 'paid' ? 'Funded / Paid ✅' : 'Pending Funding ⏳'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right flex flex-col items-end">
+                                                        <p className="font-extrabold text-gray-900 text-lg">{formatCurrency(m.amount || 0)}</p>
+                                                        {m.status !== 'paid' && isClientOwner && (
+                                                            <Link to={`/payment/${gig._id}?milestone=${idx}`} className="mt-2 text-xs font-bold bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-black transition-colors shadow-sm">
+                                                                Fund Milestone
+                                                            </Link>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                        {gig.paymentStatus !== 'paid' && isClientOwner && (
-                                            <Link to={`/payment/${gig._id}`} className="bg-green-600 text-white font-bold py-2.5 px-6 rounded-xl hover:bg-green-700 transition-colors shadow-md w-full sm:w-auto text-center">
-                                                Pay Now 💳
-                                            </Link>
-                                        )}
-                                        {gig.paymentStatus !== 'paid' && isAssignedFreelancer && (
-                                            <button onClick={() => alert("Payment Request sent to client!")} className="bg-white border-2 border-gray-200 text-gray-700 font-bold py-2.5 px-6 rounded-xl hover:bg-gray-50 hover:border-blue-600 hover:text-blue-600 transition-colors w-full sm:w-auto text-center shadow-sm">
-                                                Request Payment 🔔
-                                            </button>
-                                        )}
-                                        {gig.paymentStatus === 'paid' && (
-                                            <span className="bg-green-100 border border-green-200 text-green-800 text-xs font-extrabold uppercase tracking-widest px-3 py-2 rounded-lg">Funds Secured ✅</span>
-                                        )}
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="p-6">
+                                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-3 h-3 rounded-full ${gig.paymentStatus === 'paid' ? 'bg-green-500' : 'bg-yellow-400 animate-pulse'}`}></div>
+                                                <span className="font-bold text-gray-800">Status: <span className="uppercase tracking-wider">{gig.paymentStatus || 'Pending'}</span></span>
+                                            </div>
+                                            {gig.paymentStatus !== 'paid' && isClientOwner && (
+                                                <Link to={`/payment/${gig._id}`} className="bg-green-600 text-white font-bold py-2.5 px-6 rounded-xl hover:bg-green-700 transition-colors shadow-md w-full sm:w-auto text-center">
+                                                    Pay Now 💳
+                                                </Link>
+                                            )}
+                                            {gig.paymentStatus !== 'paid' && isAssignedFreelancer && (
+                                                <button onClick={() => alert("Payment Request sent to client!")} className="bg-white border-2 border-gray-200 text-gray-700 font-bold py-2.5 px-6 rounded-xl hover:bg-gray-50 hover:border-blue-600 hover:text-blue-600 transition-colors w-full sm:w-auto text-center shadow-sm">
+                                                    Request Payment 🔔
+                                                </button>
+                                            )}
+                                            {gig.paymentStatus === 'paid' && (
+                                                <span className="bg-green-100 border border-green-200 text-green-800 text-xs font-extrabold uppercase tracking-widest px-3 py-2 rounded-lg">Funds Secured ✅</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Generate Invoice Action */}
@@ -471,10 +580,12 @@ const GigDetailPage = () => {
                             )}
                         </div>
                     )}
+                    </ErrorBoundary>
                 </div>
 
                 {/* --- RIGHT SIDE: Sticky Client Sidebar & Actions --- */}
                 <div className="w-full lg:w-[350px] xl:w-[400px] shrink-0">
+                    <ErrorBoundary componentName="Gig Sidebar">
                     <div className="sticky top-28 space-y-6">
                         
                         {/* Budget & Main Desktop Actions */}
@@ -558,6 +669,7 @@ const GigDetailPage = () => {
                         </div>
 
                     </div>
+                    </ErrorBoundary>
                 </div>
             </div>
 

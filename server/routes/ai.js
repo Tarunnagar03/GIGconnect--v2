@@ -4,7 +4,7 @@ const auth = require('../middleware/auth');
 const { generateProposal } = require('../controllers/aiController');
 
 // @route   POST api/ai/generate-proposal
-// @desc    Generate cover letter using AI Assistant
+// @desc    Generate or modify proposal text using AI
 // @access  Private
 router.post('/generate-proposal', auth, generateProposal);
 

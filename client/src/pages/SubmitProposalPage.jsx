@@ -29,6 +29,7 @@ const SubmitProposalPage = () => {
     const [gigBudget, setGigBudget] = useState(0);
     const [gigData, setGigData] = useState(null);
     const [isAIGenerating, setIsAIGenerating] = useState(false);
+    const [isAIPricing, setIsAIPricing] = useState(false);
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({ coverLetter: '', bidAmount: '', time: '3 Days' });
     const [error, setError] = useState('');
@@ -99,18 +100,26 @@ const SubmitProposalPage = () => {
             setFormData({ ...formData, coverLetter: res.data.generatedText });
         } catch (err) {
             console.error("AI Error:", err);
-            // Fallback realistic simulated AI if backend route is not set up yet
-            setTimeout(() => {
-                let newText = "";
-                if (action === 'write') newText = `Hi there,\n\nI recently came across your project "${gigTitle}" and I am very interested in helping you complete it successfully.\n\nBased on your description, I understand the core requirements and I possess the exact skills needed to deliver top-notch results on time. I'm highly communicative and focused on exceeding client expectations.\n\nLet's connect to discuss the details!\n\nBest regards.`;
-                else if (action === 'professional') newText = `Dear Hiring Manager,\n\nI am writing to express my strong interest in the "${gigTitle}" position. \n\nWith my extensive background, I am confident in my ability to deliver exceptional value to your project. I have reviewed the requirements and am well-prepared to execute the deliverables efficiently.\n\nSincerely,`;
-                else if (action === 'shorten') newText = `Hi! I'm ready to work on "${gigTitle}". I have the required skills and can deliver great results quickly. Let's chat!`;
-                setFormData({ ...formData, coverLetter: newText });
-                setIsAIGenerating(false);
-            }, 1500);
-            return;
+            alert(err.response?.data?.msg || "Failed to connect to AI Assistant. Is your backend running?");
         }
         setIsAIGenerating(false);
+    };
+
+    const handleAISuggestBid = async () => {
+        setIsAIPricing(true);
+        setError('');
+        try {
+            const res = await api.post('/ai-pricing/suggest', {
+                type: 'freelancer_bid',
+                gigTitle,
+                gigBudget
+            });
+            setFormData(prev => ({ ...prev, bidAmount: res.data.suggestedBid }));
+        } catch (err) {
+            setError('AI Pricing failed. ' + (err.response?.data?.msg || ''));
+        } finally {
+            setIsAIPricing(false);
+        }
     };
 
     const handleFileChange = (e) => {
@@ -306,10 +315,10 @@ const SubmitProposalPage = () => {
                                                 {isAIGenerating === 'write' ? '⏳ Generating...' : '✍️ Write for me'}
                                             </button>
                                             <button type="button" disabled={isAIGenerating || !coverLetter.trim()} onClick={() => handleAIAssist('professional')} className="bg-white border border-indigo-200 text-indigo-700 text-xs font-bold px-4 py-2 rounded-xl shadow-sm hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
-                                                👔 Make Professional
+                                                {isAIGenerating === 'professional' ? '⏳ Generating...' : '👔 Make Professional'}
                                             </button>
                                             <button type="button" disabled={isAIGenerating || !coverLetter.trim()} onClick={() => handleAIAssist('shorten')} className="bg-white border border-indigo-200 text-indigo-700 text-xs font-bold px-4 py-2 rounded-xl shadow-sm hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
-                                                ✂️ Shorten
+                                                {isAIGenerating === 'shorten' ? '⏳ Generating...' : '✂️ Shorten'}
                                             </button>
                                         </div>
                                     </div>

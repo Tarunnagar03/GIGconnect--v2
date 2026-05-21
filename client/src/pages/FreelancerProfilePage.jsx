@@ -1,105 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { AuthContext } from '../context/AuthContext';
-
-// Helper: Automatically assigns Icons & Colors based on keywords
-const getServiceTheme = (serviceName) => {
-    const lower = serviceName.toLowerCase();
-    if (/(web|app|dev|react|node|python|software|code|program|api|html|css)/.test(lower)) return { icon: '💻', color: 'text-blue-600 bg-blue-50 border-blue-100' };
-    if (/(design|ui|ux|graphic|logo|art|draw|illustrat|figma|photoshop)/.test(lower)) return { icon: '🎨', color: 'text-pink-600 bg-pink-50 border-pink-100' };
-    if (/(seo|market|ad|social|promot|sale|brand|growth)/.test(lower)) return { icon: '📈', color: 'text-green-600 bg-green-50 border-green-100' };
-    if (/(write|content|translat|blog|copy|type|edit|proofread)/.test(lower)) return { icon: '✍️', color: 'text-yellow-600 bg-yellow-50 border-yellow-100' };
-    if (/(video|animat|edit|photo|film|audio|sound|music)/.test(lower)) return { icon: '🎬', color: 'text-purple-600 bg-purple-50 border-purple-100' };
-    if (/(business|consult|manag|admin|account|hr|finance|legal)/.test(lower)) return { icon: '💼', color: 'text-indigo-600 bg-indigo-50 border-indigo-100' };
-    return { icon: '✨', color: 'text-teal-600 bg-teal-50 border-teal-100' };
-};
-
-// Helper: Smart Skill Mapping Engine
-const getRelatedSkills = (serviceName, allSkills) => {
-    if (!allSkills || !Array.isArray(allSkills)) return [];
-    const lowerSrv = serviceName.toLowerCase();
-    const isWeb = /(web|app|dev|code|software|program|api|html|css|react|node)/.test(lowerSrv);
-    const isDesign = /(design|ui|ux|graphic|logo|art|illustrat|figma)/.test(lowerSrv);
-    const isMarketing = /(seo|market|ad|social|promot|sale|brand)/.test(lowerSrv);
-    const isWriting = /(write|content|translat|blog|copy|edit|proofread)/.test(lowerSrv);
-    const isVideo = /(video|animat|film|audio|sound|music)/.test(lowerSrv);
-    const isBusiness = /(business|consult|manag|admin|account|hr|finance|legal)/.test(lowerSrv);
-    return allSkills.map(s => s.trim()).filter(skill => {
-        if (!skill) return false;
-        const s = skill.toLowerCase();
-        if (isWeb && /(web|app|dev|code|software|program|api|html|css|js|javascript|typescript|react|node|python|java|c#|c\+\+|sql|mongo|aws|docker|git)/.test(s)) return true;
-        if (isDesign && /(design|ui|ux|graphic|logo|art|illustrat|figma|photoshop|canva|adobe|sketch|color)/.test(s)) return true;
-        if (isMarketing && /(seo|market|ad|social|promot|sale|brand|google|facebook|instagram|tiktok|email)/.test(s)) return true;
-        if (isWriting && /(write|content|translat|blog|copy|edit|proofread|word|typing)/.test(s)) return true;
-        if (isVideo && /(video|animat|film|audio|sound|music|premiere|after effects|vfx)/.test(s)) return true;
-        if (isBusiness && /(business|consult|manag|admin|account|hr|finance|legal|excel|data entry)/.test(s)) return true;
-        if (s.includes(lowerSrv) || lowerSrv.includes(s)) return true;
-        return false;
-    });
-};
-
-// Reusable Star Rating (Display Only)
-const StarRating = ({ rating }) => {
-    const stars = [];
-    for (let i = 1; i <= 5; i++) {
-        stars.push(<span key={i} className={`text-xl ${i <= rating ? 'text-yellow-400' : 'text-gray-300'}`}>★</span>);
-    }
-    return <div className="flex items-center">{stars}</div>;
-};
-
-// Reusable list component for Education (Objects)
-const EducationSection = ({ items }) => {
-    const safeItems = Array.isArray(items) ? items : (typeof items === 'string' ? items.split(',') : []);
-    if (!safeItems || safeItems.length === 0) return null;
-    return (
-        <div className="border-t border-gray-100 mt-6 pt-6">
-            <h3 className="text-sm font-bold uppercase tracking-wider mb-4 text-gray-800">Education</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {safeItems.map((item, index) => {
-                    if (item === '[object Object]') return null;
-                    let parsedItem = item;
-                    let isObj = typeof item === 'object' && item !== null;
-                    
-                    if (!isObj && typeof item === 'string') {
-                        try {
-                            parsedItem = JSON.parse(item);
-                            isObj = typeof parsedItem === 'object';
-                        } catch (e) { /* ignore standard strings */ }
-                    }
-                    return (
-                        <div key={index} className="flex items-start gap-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
-                            <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shrink-0 text-sm">🎓</div>
-                            <div>
-                                <p className="font-bold text-gray-800 text-sm">{isObj ? parsedItem.course : parsedItem}</p>
-                                {isObj && parsedItem.college && <p className="text-xs text-gray-500 mt-0.5">{parsedItem.college}</p>}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-// Reusable list component for new sections
-const ProfileSectionList = ({ title, items }) => {
-    const safeItems = Array.isArray(items) ? items : (typeof items === 'string' ? items.split(',') : []);
-    if (!safeItems || safeItems.length === 0) return null; // Don't render if empty
-    return (
-        <div className="border-t border-gray-100 mt-6 pt-6">
-            <h3 className="text-sm font-bold uppercase tracking-wider mb-4 text-gray-800">{title}</h3>
-            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 text-gray-700">
-                {safeItems.map((item, index) => (
-                    <li key={index} className="text-sm flex items-start gap-2">
-                        <span className="text-purple-400 mt-0.5">•</span>
-                        <span>{item}</span>
-                    </li>
-                ))}
-            </ul>
-        </div>
-    );
-};
+import { getServiceTheme, getRelatedSkills } from '../utils/serviceHelpers';
+import StarRating from '../components/StarRating';
+import { EducationSection, InfoSection as ProfileSectionList, getRichPortfolio } from '../components/SharedProfileComponents';
 
 const ProfilePageSkeleton = () => (
     <div className="max-w-4xl mx-auto animate-pulse">
@@ -136,11 +41,13 @@ const ProfilePageSkeleton = () => (
 
 const FreelancerProfilePage = () => {
     const { freelancerId } = useParams();
+    const navigate = useNavigate();
     const { auth } = React.useContext(AuthContext);
     const [profile, setProfile] = useState(null);
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [orderingPkg, setOrderingPkg] = useState(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -165,6 +72,32 @@ const FreelancerProfilePage = () => {
 
     // Determine contact visibility
     const showContactInfo = profile?.user?.contactVisibility === 'Everyone' || (profile?.user?.contactVisibility === 'Connections' && auth?.isAuthenticated);
+    const parsedPortfolio = getRichPortfolio(profile?.portfolio);
+
+    const handleOrderNow = async (pkg) => {
+        if (!auth?.isAuthenticated || auth?.user?.role !== 'Client') {
+            alert("Please log in as a Client to purchase this package.");
+            return;
+        }
+        if (!window.confirm(`Ready to order "${pkg.title}" for ₹${pkg.price}? You will be redirected to payment.`)) return;
+
+        setOrderingPkg(pkg.title);
+        try {
+            const payload = {
+                title: `Order: ${pkg.title}`,
+                description: `Instant Package Order:\n\nDeliverables:\n${pkg.description}\n\nDelivery Time: ${pkg.deliveryTime}`,
+                budget: Number(pkg.price),
+                assignedFreelancer: profile.user._id,
+            };
+            const res = await api.post('/gigs/instant-order', payload);
+            navigate(`/payment/${res.data._id}`);
+        } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.msg || 'Failed to create instant order. Please ensure the backend endpoint is set up.');
+        } finally {
+            setOrderingPkg(null);
+        }
+    };
 
     if (loading) return <ProfilePageSkeleton />;
 
@@ -242,6 +175,25 @@ const FreelancerProfilePage = () => {
                     </div>
                 )}
                 
+                {/* --- Rich Portfolio / Case Studies --- */}
+                {parsedPortfolio.length > 0 && (
+                    <div className="border-t border-gray-100 mt-6 pt-6">
+                        <h3 className="text-sm font-bold uppercase tracking-wider mb-4 text-gray-800">Portfolio & Projects</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {parsedPortfolio.map((item, idx) => (
+                                <a key={idx} href={item.link} target="_blank" rel="noopener noreferrer" className="block p-5 rounded-xl border border-gray-200 bg-gray-50 hover:bg-blue-50 hover:border-blue-200 transition-all group shadow-sm">
+                                    <div className="flex justify-between items-start">
+                                        <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-xl mb-3 group-hover:scale-110 transition-transform">🔗</div>
+                                        <svg className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                    </div>
+                                    <h4 className="font-bold text-gray-900 group-hover:text-blue-700 transition-colors truncate">{item.title}</h4>
+                                    <p className="text-xs text-gray-500 mt-1 truncate">{item.link.replace(/^https?:\/\//, '')}</p>
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <EducationSection items={profile.education} />
                 <ProfileSectionList title="Achievements" items={profile.achievements} />
                 
@@ -260,10 +212,30 @@ const FreelancerProfilePage = () => {
                 {/* --- Premium Services Section (Moved to Bottom) --- */}
                 {profile.services && profile.services.length > 0 && (
                     <div className="border-t border-gray-100 mt-6 pt-6">
-                        <h3 className="text-sm font-bold uppercase tracking-wider mb-4 text-purple-700">Services I Offer</h3>
+                        <h3 className="text-sm font-bold uppercase tracking-wider mb-4 text-purple-700">Project Catalog & Services</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {(Array.isArray(profile.services) ? profile.services : typeof profile.services === 'string' ? profile.services.split(',') : []).map((service, index) => {
-                                const srv = service.trim();
+                            {(Array.isArray(profile.services) ? profile.services : typeof profile.services === 'string' ? profile.services.split(',') : []).map((s, index) => {
+                                let service = s;
+                                if (typeof s === 'string') { try { const p = JSON.parse(s); if (p.type === 'package') service = p; } catch(e){} }
+
+                                if (typeof service === 'object' && service.type === 'package') {
+                                    return (
+                                        <div key={index} className="p-6 rounded-2xl border border-green-100 bg-gradient-to-b from-white to-green-50/30 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col h-full group relative overflow-hidden">
+                                            <div className="absolute top-0 right-4 bg-green-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-b-lg shadow-sm">Ready to buy</div>
+                                            <h4 className="font-extrabold text-lg text-gray-900 mb-2 mt-2 line-clamp-2">{service.title}</h4>
+                                            <p className="text-gray-600 text-sm mb-6 line-clamp-3 flex-1">{service.description}</p>
+                                            <div className="flex justify-between items-center mb-4 text-sm font-bold text-gray-700 bg-white p-3 rounded-xl border border-green-100">
+                                                <span>⏱️ {service.deliveryTime}</span>
+                                                <span className="text-xl font-black text-green-600">₹{service.price}</span>
+                                            </div>
+                                        <button disabled={orderingPkg === service.title} onClick={() => handleOrderNow(service)} className="w-full bg-green-600 text-white font-bold py-3.5 rounded-xl hover:bg-green-700 transition-all hover:-translate-y-0.5 shadow-md flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                                            {orderingPkg === service.title ? 'Processing...' : 'Order Now'} <span className="text-lg">💳</span>
+                                            </button>
+                                        </div>
+                                    );
+                                }
+
+                                const srv = typeof service === 'string' ? service.trim() : '';
                                 if (!srv) return null;
                                 const theme = getServiceTheme(srv);
                                 const allSkills = Array.isArray(profile.skills) ? profile.skills : typeof profile.skills === 'string' ? profile.skills.split(',') : [];

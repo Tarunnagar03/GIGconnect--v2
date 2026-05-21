@@ -21,11 +21,7 @@ import { Country, State, City } from 'country-state-city';
 import LandingNavbar from '../components/LandingNavbar';
 import { Link as ScrollLink } from 'react-scroll';
 import { formatCurrency } from '../utils/currencyFormatter';
-
-// --- (All your Icon components: ChevronDownIcon, EyeIcon, EyeOffIcon) ---
-const ChevronDownIcon = () => ( <svg className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="20" height="20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg> );
-const EyeIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-500"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639l4.443-5.332a1.01 1.01 0 011.517 0l4.443 5.332a1.012 1.012 0 010 .639l-4.443 5.332a1.01 1.01 0 01-1.517 0l-4.443-5.332z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg> );
-const EyeOffIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-500"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.243 4.243l-4.243-4.243" /></svg> );
+import { ChevronDownIcon, EyeIcon, EyeOffIcon } from '../components/Icons';
 
 // --- Helper component for the placeholder sections ---
 const Section = ({ id, title, children, bg = 'bg-white' }) => (
@@ -37,134 +33,6 @@ const Section = ({ id, title, children, bg = 'bg-white' }) => (
     </section>
 );
 
-// --- New: Contact Form Component ---
-const ContactForm = () => {
-    const [contactData, setContactData] = useState({ name: '', email: '', subject: 'General Inquiry', message: '' });
-    const [contactError, setContactError] = useState('');
-    const [contactSuccess, setContactSuccess] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const onContactChange = e => setContactData({ ...contactData, [e.target.name]: e.target.value });
-
-    const onContactSubmit = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        setContactError('');
-        setContactSuccess('');
-        try {
-            const res = await api.post('/contact', contactData);
-            setContactSuccess(res.data.msg);
-            setContactData({ name: '', email: '', subject: 'General Inquiry', message: '' });
-        } catch (err) {
-            setContactError(err.response?.data?.msg || 'Failed to send message.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    return (
-        <div className="max-w-6xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 flex flex-col lg:flex-row">
-            {/* Left Column: Contact Info */}
-            <div className="lg:w-2/5 bg-gradient-to-br from-blue-900 to-slate-900 text-white p-10 lg:p-12 flex flex-col justify-between relative overflow-hidden">
-                <div className="absolute top-0 right-0 -mt-8 -mr-8 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl"></div>
-                <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-32 h-32 bg-blue-500 opacity-20 rounded-full blur-2xl"></div>
-
-                <div className="relative z-10">
-                    <h3 className="text-3xl lg:text-4xl font-extrabold mb-4 tracking-tight">Let's Talk.</h3>
-                    <p className="text-blue-100 text-lg mb-10 leading-relaxed font-medium">
-                        Have a question or need a custom solution? Drop us a message and our team will get back to you within 2 hours.
-                    </p>
-
-                    <div className="space-y-8">
-                        <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center shrink-0">
-                                <span className="text-xl">📧</span>
-                            </div>
-                            <div>
-                                <p className="text-sm text-blue-200 font-semibold uppercase tracking-wider mb-1">Email Us</p>
-                                <p className="text-lg font-bold">support@gigconnect.com</p>
-                            </div>
-                        </div>
-                        <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center shrink-0">
-                                <span className="text-xl">📍</span>
-                            </div>
-                            <div>
-                                <p className="text-sm text-blue-200 font-semibold uppercase tracking-wider mb-1">Location</p>
-                                <p className="text-lg font-bold">New Delhi, India</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="relative z-10 mt-12 pt-8 border-t border-white/10">
-                    <div className="flex items-center gap-3">
-                        <span className="relative flex h-3 w-3">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                        </span>
-                        <p className="text-sm font-bold text-blue-100">24/7 Support Available</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Right Column: Form */}
-            <div className="lg:w-3/5 p-10 lg:p-12">
-                <form onSubmit={onContactSubmit} className="space-y-6">
-                    {contactSuccess && (
-                        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl text-center font-bold animate-slide-up">
-                            {contactSuccess}
-                        </div>
-                    )}
-                    {contactError && (
-                        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-center font-bold animate-slide-up">
-                            {contactError}
-                        </div>
-                    )}
-
-                    <div className="grid md:grid-cols-2 gap-6">
-                        <div>
-                            <label htmlFor="contact-name" className="block text-sm font-bold text-gray-700 mb-2">Your Name <span className="text-red-500">*</span></label>
-                            <input type="text" name="name" id="contact-name" value={contactData.name} onChange={onContactChange} required className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50 focus:bg-white" placeholder="John Doe" />
-                        </div>
-                        <div>
-                            <label htmlFor="contact-email" className="block text-sm font-bold text-gray-700 mb-2">Your Email <span className="text-red-500">*</span></label>
-                            <input type="email" name="email" id="contact-email" value={contactData.email} onChange={onContactChange} required className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50 focus:bg-white" placeholder="john@example.com" />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label htmlFor="contact-subject" className="block text-sm font-bold text-gray-700 mb-2">What can we help you with? <span className="text-red-500">*</span></label>
-                        <div className="relative">
-                            <select name="subject" id="contact-subject" value={contactData.subject} onChange={onContactChange} required className="appearance-none w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50 focus:bg-white text-gray-800">
-                                <option value="General Inquiry">General Inquiry</option>
-                                <option value="Billing Support">Billing Support</option>
-                                <option value="Enterprise Sales">Enterprise Sales</option>
-                                <option value="Report a Bug">Report a Bug</option>
-                            </select>
-                            <ChevronDownIcon />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label htmlFor="contact-message" className="block text-sm font-bold text-gray-700 mb-2">Message <span className="text-neutral-400 font-normal">(Optional)</span></label>
-                        <textarea name="message" id="contact-message" rows="4" value={contactData.message} onChange={onContactChange} className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50 focus:bg-white resize-none" placeholder="Tell us how we can help you..."></textarea>
-                    </div>
-
-                    <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 transition-all hover:-translate-y-1 shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed text-lg mt-2">
-                        {isSubmitting ? 'Sending...' : 'Send Message'}
-                    </button>
-
-                    <p className="text-center text-xs text-gray-400 mt-4 flex items-center justify-center gap-1.5 font-medium">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                        Your information is secure and encrypted.
-                    </p>
-                </form>
-            </div>
-        </div>
-    );
-};
-
 // --- New: Featured Gigs Component ---
 const FeaturedProjects = () => {
     const [gigs, setGigs] = useState([]);
@@ -173,8 +41,8 @@ const FeaturedProjects = () => {
     useEffect(() => {
         api.get('/gigs/public')
             .then(res => {
-                // Filter out "orphaned" gigs whose client account has been deleted
-                const validGigs = Array.isArray(res.data) ? res.data.filter(gig => gig.client) : [];
+                // Filter out "orphaned" gigs and "Archived" (Soft-Deleted) gigs by Admin
+                const validGigs = Array.isArray(res.data) ? res.data.filter(gig => gig.client && gig.status === 'Open') : [];
                 setGigs(validGigs);
             })
             .catch(err => console.error("Error fetching public gigs:", err))
@@ -418,20 +286,14 @@ function HomePage() {
                         }
                     `}</style>
                     <div className="animate-marquee flex gap-12 sm:gap-24 text-gray-500 font-semibold uppercase tracking-widest text-xs sm:text-sm min-w-max px-6">
-                        {/* Group 1 */}
-                        <span className="flex items-center gap-2"><span className="text-green-500">✔</span> Trusted by 10,000+ Startups</span>
-                        <span className="flex items-center gap-2"><span className="text-blue-500">🔒</span> Secure Payments via Stripe</span>
-                        <span className="flex items-center gap-2"><span className="text-purple-500">⚡</span> 24/7 Quality Support</span>
-                        <span className="flex items-center gap-2"><span className="text-green-500">✔</span> Trusted by 10,000+ Startups</span>
-                        <span className="flex items-center gap-2"><span className="text-blue-500">🔒</span> Secure Payments via Stripe</span>
-                        <span className="flex items-center gap-2"><span className="text-purple-500">⚡</span> 24/7 Quality Support</span>
-                        {/* Group 2 (Duplicate for Seamless Loop) */}
-                        <span className="flex items-center gap-2"><span className="text-green-500">✔</span> Trusted by 10,000+ Startups</span>
-                        <span className="flex items-center gap-2"><span className="text-blue-500">🔒</span> Secure Payments via Stripe</span>
-                        <span className="flex items-center gap-2"><span className="text-purple-500">⚡</span> 24/7 Quality Support</span>
-                        <span className="flex items-center gap-2"><span className="text-green-500">✔</span> Trusted by 10,000+ Startups</span>
-                        <span className="flex items-center gap-2"><span className="text-blue-500">🔒</span> Secure Payments via Stripe</span>
-                        <span className="flex items-center gap-2"><span className="text-purple-500">⚡</span> 24/7 Quality Support</span>
+                        {/* Generate seamless loop items dynamically */}
+                        {Array(6).fill([
+                            { text: 'Trusted by 10,000+ Startups', icon: '✔', color: 'text-green-500' },
+                            { text: 'Secure Payments via Stripe', icon: '🔒', color: 'text-blue-500' },
+                            { text: '24/7 Quality Support', icon: '⚡', color: 'text-purple-500' }
+                        ]).flat().map((item, idx) => (
+                            <span key={idx} className="flex items-center gap-2"><span className={item.color}>{item.icon}</span> {item.text}</span>
+                        ))}
                     </div>
                 </div>
             </section>
@@ -502,7 +364,18 @@ function HomePage() {
             
             {/* --- "Contact" Section --- */}
             <Section id="contact" title="" bg="bg-white">
-                <ContactForm />
+                <div className="max-w-4xl mx-auto text-center">
+                    <h2 className="text-4xl font-bold text-center mb-6 text-neutral-800">Have Questions?</h2>
+                    <p className="text-xl text-gray-600 mb-8">
+                        Our team is ready to help you with any inquiries, from technical support to enterprise solutions.
+                    </p>
+                    <Link 
+                        to="/contact-us"
+                        className="inline-block bg-blue-600 text-white font-bold text-lg px-10 py-4 rounded-full shadow-lg hover:bg-blue-700 transform hover:-translate-y-1 transition-all"
+                    >
+                        Get In Touch
+                    </Link>
+                </div>
             </Section>
 
             {/* --- BOTTOM CTA BANNER --- */}

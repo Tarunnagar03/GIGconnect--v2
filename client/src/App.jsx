@@ -18,9 +18,10 @@
 
 import React, { useContext } from 'react';
 // --- Router is NOT imported here ---
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'; 
-import { AuthContext } from './context/AuthContext';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
+import AdminRoute from './components/AdminRoute';
 import Navbar from './components/Navbar';
 import HomePage from './pages/HomePage';
 import Dashboard from './pages/Dashboard';
@@ -50,7 +51,11 @@ import ContactPage from './pages/ContactPage';
 import FindFreelancers from './pages/FindFreelancers.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
 
+// --- NEW: Global Error Boundary ---
+import ErrorBoundary from './components/ErrorBoundary';
+
 // --- ALL IMPORTS ARE CORRECTED ---
+import TeamAgencyPage from './pages/TeamAgencyPage';
 import ManageGigsPage from './pages/ManageGigsPage';
 import MyCompletedProjectsPage from './pages/MyCompletedProjectsPage';
 import AboutMePage from './pages/AboutMePage';
@@ -58,21 +63,42 @@ import ClientProjectsPage from './pages/ClientProjectsPage';
 import ClientProfilePage from './pages/ClientProfilePage';
 import HelpPage from './pages/HelpPage';
 
+// --- NEW: Chatbot and MyTickets ---
+import Chatbot from './components/Chatbot';
+import MyTicketsPage from './pages/MyTicketsPage';
+
 // Helper component to redirect if logged in
 const AuthRedirect = ({ children }) => {
-  const { auth } = useContext(AuthContext);
-  return auth.isAuthenticated ? <Navigate to="/dashboard" /> : children;
+  const { auth } = useAuth();
+  
+  // Wait for auth verification to complete before making redirect decisions
+  if (auth?.loading) return null;
+  
+  if (auth.isAuthenticated) {
+      if (auth.user?.role === 'Admin') {
+          return <Navigate to="/admin" />;
+      }
+      return <Navigate to="/dashboard" />;
+  }
+  return children;
 };
 
 // The component using useLocation MUST be a child of <Router>.
 function App() {
     const location = useLocation();
-    const hideNavbar = location.pathname === '/';
+    const isHomePage = location.pathname === '/';
+    const isAdminPage = location.pathname.startsWith('/admin');
 
     return (
         <>
-            {!hideNavbar && <Navbar />}
-            <main className="container mx-auto px-4 py-6">
+            {!isHomePage && !isAdminPage && (
+                <ErrorBoundary componentName="Top Navigation Bar" showReload={false}>
+                    <Navbar />
+                </ErrorBoundary>
+            )}
+            <main className={!isAdminPage ? "container mx-auto px-4 py-6" : ""}>
+                {/* key={location.pathname} ensures the error resets if user navigates away from the crashed page */}
+                <ErrorBoundary componentName="Main Content Area" key={location.pathname}>
                 <Routes>
                     <Route 
                         path="/" 
@@ -98,6 +124,7 @@ function App() {
                     <Route path="/settings/2fa" element={<PrivateRoute><TwoFactorAuthPage /></PrivateRoute>} />
                     <Route path="/settings/delete" element={<PrivateRoute><DeleteAccountPage /></PrivateRoute>} />
                     <Route path="/settings/details" element={<PrivateRoute><UpdateDetailsPage /></PrivateRoute>} />
+                    <Route path="/settings/team" element={<PrivateRoute><TeamAgencyPage /></PrivateRoute>} />
                     <Route path="/history" element={<PrivateRoute><TransactionHistory /></PrivateRoute>} />
                     <Route path="/profile/:freelancerId" element={<PrivateRoute><FreelancerProfilePage /></PrivateRoute>} />
                     <Route path="/payment/:gigId" element={<PrivateRoute><PaymentPage /></PrivateRoute>} />
@@ -106,8 +133,7 @@ function App() {
                     <Route path="/my-proposals" element={<PrivateRoute><MyProposalsPage /></PrivateRoute>} />
                     <Route path="/services" element={<PrivateRoute><ServicesPage /></PrivateRoute>} />
                     <Route path="/freelancers" element={<PrivateRoute><FindFreelancers /></PrivateRoute>} />
-                    <Route path="/admin" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />
-                    <Route path="/contact-us" element={<PrivateRoute><ContactPage /></PrivateRoute>} />
+                    <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
                     
                     {/* --- ALL PROJECT ROUTES --- */}
                     <Route path="/my-projects" element={<PrivateRoute><MyCompletedProjectsPage /></PrivateRoute>} />
@@ -116,10 +142,17 @@ function App() {
                     <Route path="/about-me" element={<PrivateRoute><AboutMePage /></PrivateRoute>} />
                     <Route path="/client-profile/:clientId" element={<PrivateRoute><ClientProfilePage /></PrivateRoute>} />
                     <Route path="/help" element={<HelpPage />} />
+                    {/* --- NEW: Made Contact Page Public --- */}
+                    <Route path="/contact-us" element={<ContactPage />} />
+                    <Route path="/settings/tickets" element={<PrivateRoute><MyTicketsPage /></PrivateRoute>} />
 
                     <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
+                </ErrorBoundary>
             </main>
+            
+            {/* --- Global AI Chatbot --- */}
+            {!isAdminPage && <Chatbot />}
         </>
     );
 }

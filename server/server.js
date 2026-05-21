@@ -171,6 +171,7 @@ io.on('connection', (socket) => {
         }
     });
 
+app.use('/api/ai', require('./routes/ai'));
     // --- Read Receipts ---
     socket.on('markAsRead', ({ roomName, userId }) => {
         socket.to(roomName).emit('messagesRead', { byUserId: userId });

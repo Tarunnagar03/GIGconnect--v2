@@ -15,10 +15,16 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const { createPaymentIntent, confirmPaymentIntent, stripeWebhook } = require('../controllers/paymentController');
+const { createPaymentIntent, confirmPaymentIntent, stripeWebhook, setupStripeConnect, requestPayout } = require('../controllers/paymentController');
 
 // This route is for the user to create a payment
 router.post('/create-payment-intent', auth, createPaymentIntent);
+
+router.post('/connect', auth, setupStripeConnect);
+
+// Freelancer route to withdraw funds
+router.post('/payout', auth, requestPayout);
+
 
 // Fallback confirmation for local/dev demos (still verifies with Stripe API)
 router.post('/confirm-payment-intent', auth, confirmPaymentIntent);

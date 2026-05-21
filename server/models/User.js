@@ -36,6 +36,19 @@ const UserSchema = new mongoose.Schema({
     headline: { type: String },
     profileImage: { type: String, default: '' },
     date: { type: Date, default: Date.now },
+    
+    // Enterprise Feature: Trust & Safety KYC
+    kycStatus: { 
+        type: String, 
+        enum: ['Unverified', 'Pending', 'Verified', 'Rejected'], 
+        default: 'Unverified' 
+    },
+
+    // Enterprise Feature: Stripe Connect (Payouts & Escrow)
+    stripeAccountId: { type: String },
+    stripeAccountSetupComplete: { type: Boolean, default: false },
+    walletBalance: { type: Number, default: 0 },
+
     // 2FA Fields
     twoFactorEnabled: { type: Boolean, default: false },
     oneTimeCode: { type: String },

@@ -1,6 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import api from '../api';
 
 const BillingPage = () => {
     const { auth } = useContext(AuthContext);
@@ -24,15 +25,33 @@ const BillingPage = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const handleSave = (e) => {
+    const handleStripeConnect = async () => {
+        setIsSaving(true);
+        try {
+            const res = await api.post('/payments/connect');
+            if (res.data.url) {
+                window.location.href = res.data.url; // Redirect to Stripe
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Failed to initialize Stripe Connect");
+            setIsSaving(false);
+        }
+    };
+
+    const handleSave = async (e) => {
         e.preventDefault();
         setIsSaving(true);
-        // Simulate API Call to save billing preferences
-        setTimeout(() => {
+        try {
+            await api.put('/users/billing-preferences', formData);
             setIsSaving(false);
             setShowSuccess(true);
             setTimeout(() => setShowSuccess(false), 4000);
-        }, 1200);
+        } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.msg || "Failed to save billing preferences");
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -64,46 +83,28 @@ const BillingPage = () => {
                         {/* Payout Methods Card */}
                         <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
                             <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><span className="text-xl">💸</span> Payout Methods</h2>
+                                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><span className="text-xl">🏦</span> Secure Payouts</h2>
                                 <span className="bg-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md">Primary</span>
                             </div>
-                            <div className="p-6 md:p-8 space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">UPI ID (Fastest)</label>
-                                        <input type="text" name="upiId" value={formData.upiId} onChange={handleChange} placeholder="e.g. username@okhdfcbank" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold text-gray-800 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Bank Account Number</label>
-                                        <input type="text" name="bankAccount" value={formData.bankAccount} onChange={handleChange} placeholder="000123456789" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold text-gray-800 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">IFSC Code</label>
-                                        <input type="text" name="ifscCode" value={formData.ifscCode} onChange={handleChange} placeholder="HDFC0001234" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold text-gray-800 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none" />
-                                    </div>
+                            <div className="p-6 md:p-8 text-center">
+                                <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                                    💳
                                 </div>
+                                <h3 className="text-xl font-bold text-gray-800 mb-2">Connect Your Bank Account</h3>
+                                <p className="text-gray-500 mb-6 max-w-md mx-auto">We partner with Stripe for fast, secure payments. Connect your account to automatically receive payouts when milestones are approved.</p>
+                                
+                                <button 
+                                    type="button" 
+                                    onClick={handleStripeConnect}
+                                    disabled={isSaving}
+                                    className="bg-[#635BFF] hover:bg-[#4F46E5] text-white font-bold py-3 px-8 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
+                                >
+                                    {isSaving ? 'Connecting...' : 'Set up payouts with Stripe'}
+                                    {!isSaving && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>}
+                                </button>
                             </div>
                         </div>
 
-                        {/* Tax Identity Card */}
-                        <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-                                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><span className="text-xl">🧾</span> Tax Identity Information</h2>
-                            </div>
-                            <div className="p-6 md:p-8 space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">PAN Number <span className="text-red-500">*</span></label>
-                                        <input type="text" name="panNumber" required value={formData.panNumber} onChange={handleChange} placeholder="ABCDE1234F" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none uppercase" />
-                                        <p className="text-[10px] text-gray-500 font-medium mt-1">Required for generating legal invoices.</p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">GSTIN (Optional)</label>
-                                        <input type="text" name="gstNumber" value={formData.gstNumber} onChange={handleChange} placeholder="22AAAAA0000A1Z5" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none uppercase" />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </>
                 )}
 

@@ -70,7 +70,9 @@ exports.getMyGigs = async (req, res) => {
 exports.getAllGigs = async (req, res) => {
     try {
         const { keyword, minPrice, maxPrice, skills, lng, lat, radiusKm } = req.query;
-        let query = {};
+        let query = {
+            status: { $ne: 'Archived' } // Hide archived gigs by default
+        };
         const andConditions = [];
 
         if (keyword) {
@@ -106,7 +108,7 @@ exports.getAllGigs = async (req, res) => {
         }
 
         // --- ENSURE THIS FILTER IS PRESENT ---
-        andConditions.push({ status: 'Open' }); // Only find gigs that are Open
+        andConditions.push({ status: 'Open' }); // Only find gigs that are Open for public browsing
 
         query = { $and: andConditions };
 
@@ -195,7 +197,7 @@ exports.getMyAssignedGigs = async (req, res) => {
     try {
         const gigs = await Gig.find({
             assignedFreelancer: req.user.id,
-            status: { $in: ['In Progress', 'Completed'] }
+            status: { $in: ['In Progress', 'Completed', 'Disputed'] } // Show disputed gigs too
         }).sort({ date: -1 });
         res.json(gigs);
     } catch (err) {
@@ -207,7 +209,10 @@ exports.getMyAssignedGigs = async (req, res) => {
 // --- NEW FUNCTION: Get a few open gigs for the public landing page ---
 exports.getPublicGigs = async (req, res) => {
     try {
-        const gigs = await Gig.find({ status: 'Open' })
+        const gigs = await Gig.find({ 
+            status: 'Open',
+            status: { $ne: 'Archived' } // Hide archived gigs
+        })
             .populate('client', 'name')
             .sort({ date: -1 })
             .limit(4); // Get the 4 newest open gigs

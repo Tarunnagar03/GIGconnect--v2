@@ -9,6 +9,10 @@ const ContactSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    subject: {
+        type: String,
+        default: 'General Inquiry'
+    },
     message: {
         type: String
     }

@@ -15,56 +15,8 @@ import React, { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { AuthContext } from '../context/AuthContext';
-
-// Helper: Premium Dynamic List Builder for Arrays (Skills, Services, Education, etc.)
-const DynamicListInput = ({ name, label, items, onChange, placeholder, required }) => {
-    const [inputValue, setInputValue] = useState('');
-
-    const handleAdd = (e) => {
-        e.preventDefault();
-        const trimmed = inputValue.trim();
-        if (trimmed && !items.includes(trimmed)) {
-            onChange(name, [...items, trimmed]);
-            setInputValue('');
-        }
-    };
-
-    const handleRemove = (indexToRemove) => {
-        onChange(name, items.filter((_, index) => index !== indexToRemove));
-    };
-
-    return (
-        <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-                {label} {required && <span className="text-red-500">*</span>}
-            </label>
-            <div className="flex gap-2 mb-3">
-                <input
-                    type="text"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(e); } }}
-                    className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                    placeholder={placeholder}
-                />
-                <button type="button" onClick={handleAdd} className="bg-blue-100 text-blue-700 px-6 font-bold rounded-xl hover:bg-blue-200 transition-colors shadow-sm">
-                    Add
-                </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-                {items.map((item, index) => (
-                    <span key={index} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold px-4 py-1.5 rounded-full flex items-center gap-2 shadow-sm animate-fade-in">
-                        {item}
-                        <button type="button" onClick={() => handleRemove(index)} className="hover:text-red-200 focus:outline-none flex items-center justify-center transition-colors">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        </button>
-                    </span>
-                ))}
-                {items.length === 0 && <span className="text-sm text-gray-400 italic font-medium px-2">No items added yet.</span>}
-            </div>
-        </div>
-    );
-};
+import DynamicListInput from '../components/DynamicListInput';
+import { ChevronDownIcon } from '../components/Icons';
 
 // Helper: Premium Dynamic List Builder for Education (Objects)
 const DynamicEducationInput = ({ items, onChange }) => {
@@ -91,8 +43,9 @@ const DynamicEducationInput = ({ items, onChange }) => {
             <div className="flex flex-col gap-2">
                 {items.map((item, index) => {
                     const isObj = typeof item === 'object' && item !== null;
+                    const itemKey = isObj ? `${item.course}-${index}` : `${item}-${index}`;
                     return (
-                        <div key={index} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm animate-fade-in">
+                        <div key={itemKey} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm animate-fade-in">
                             <div>
                                 <p className="font-bold text-gray-800 text-sm">{isObj ? item.course : item}</p>
                                 {isObj && item.college && <p className="text-xs text-gray-500 mt-0.5">{item.college}</p>}
@@ -107,11 +60,51 @@ const DynamicEducationInput = ({ items, onChange }) => {
     );
 };
 
+// Helper: Premium Dynamic List Builder for Portfolio
+const DynamicPortfolioInput = ({ items, onChange }) => {
+    const [title, setTitle] = useState('');
+    const [link, setLink] = useState('');
+
+    const handleAdd = (e) => {
+        e.preventDefault();
+        if (title.trim() && link.trim()) {
+            onChange('portfolioItems', [...items, { title: title.trim(), link: link.trim() }]);
+            setTitle('');
+            setLink('');
+        }
+    };
+
+    return (
+        <div className="border-t border-gray-100 pt-6 mt-6">
+            <label className="block text-sm font-bold text-gray-800 mb-2">Rich Portfolio & Case Studies</label>
+            <p className="text-xs text-gray-500 mb-4">Add links to your live projects, GitHub repos, or Dribbble designs.</p>
+            <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <input type="text" placeholder="Project Name (e.g. E-Commerce App)" value={title} onChange={e => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(e); } }} className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                <input type="url" placeholder="Project Link (https://...)" value={link} onChange={e => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(e); } }} className="flex-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                <button type="button" onClick={handleAdd} className="bg-blue-100 text-blue-700 px-6 py-3 font-bold rounded-xl hover:bg-blue-200 transition-colors shadow-sm whitespace-nowrap">Add Project</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {items.map((item, index) => (
+                    <div key={index} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm animate-fade-in group">
+                        <div className="overflow-hidden pr-2">
+                            <p className="font-bold text-gray-800 text-sm truncate">{item.title}</p>
+                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline truncate block mt-0.5">{item.link}</a>
+                        </div>
+                        <button type="button" onClick={() => onChange('portfolioItems', items.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500 p-2 transition-colors focus:outline-none bg-white rounded-lg shadow-sm group-hover:shadow"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                    </div>
+                ))}
+                {items.length === 0 && <span className="text-sm text-gray-400 italic font-medium px-2 col-span-2">No portfolio items added yet.</span>}
+            </div>
+        </div>
+    );
+};
+
 const CreateProfile = () => {
     const [formData, setFormData] = useState({
         skills: [], rate: '', bio: '', portfolio: '',
         services: [], education: [], achievements: [],
-        locationText: '', experience: { years: '', months: '' }
+        locationText: '', experience: { years: '', months: '' },
+        portfolioItems: []
     });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -126,6 +119,18 @@ const CreateProfile = () => {
         const fetchProfile = async () => {
             try {
                 const res = await api.get('/profiles/me');
+                
+                // Safe extraction of rich portfolio array vs old string
+                let parsedPortfolioItems = [];
+                if (res.data?.portfolio) {
+                    if (res.data.portfolio.trim().startsWith('[')) {
+                        try { parsedPortfolioItems = JSON.parse(res.data.portfolio); } catch (e) {}
+                    } else if (res.data.portfolio.trim() && res.data.portfolio.includes('http')) {
+                        // Legacy fallback
+                        parsedPortfolioItems = [{ title: 'Personal Website', link: res.data.portfolio }];
+                    }
+                }
+                
                 if (res.data) {
                     setFormData({
                         skills: res.data.skills || [],
@@ -142,7 +147,8 @@ const CreateProfile = () => {
                         }).filter(Boolean),
                         achievements: res.data.achievements || [],
                         locationText: res.data.locationText || '',
-                        experience: res.data.experience || { years: '', months: '' }
+                        experience: res.data.experience || { years: '', months: '' },
+                        portfolioItems: parsedPortfolioItems
                     });
                     setIsEditMode(true);
                 }
@@ -155,7 +161,7 @@ const CreateProfile = () => {
         fetchProfile();
     }, []);
 
-    const { skills, rate, bio, portfolio, services, education, achievements, locationText, experience } = formData;
+    const { skills, rate, bio, portfolio, services, education, achievements, locationText, experience, portfolioItems } = formData;
     const onChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
     const handleListChange = (name, newList) => setFormData(prev => ({ ...prev, [name]: newList }));
     const handleExperienceChange = (e) => setFormData(prev => ({ ...prev, experience: { ...prev.experience, [e.target.name]: e.target.value } }));
@@ -180,7 +186,8 @@ const CreateProfile = () => {
         try {
             const payload = {
                 ...formData,
-                education: formData.education.map(item => typeof item === 'object' ? JSON.stringify(item) : item)
+                education: formData.education.map(item => typeof item === 'object' ? JSON.stringify(item) : item),
+                portfolio: JSON.stringify(formData.portfolioItems) // Save rich array as string
             };
 
             await api.post('/profiles', payload);
@@ -224,10 +231,6 @@ const CreateProfile = () => {
                                     <label htmlFor="rate" className="block text-sm font-medium text-gray-700 mb-1">Hourly Rate (₹)</label>
                                     <input type="number" id="rate" name="rate" value={rate} onChange={onChange} min="0" className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" placeholder="e.g., 50"/>
                                 </div>
-                                <div>
-                                    <label htmlFor="portfolio" className="block text-sm font-medium text-gray-700 mb-1">Portfolio/Website</label>
-                                    <input type="text" id="portfolio" name="portfolio" value={portfolio} onChange={onChange} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white" placeholder="https://yourwebsite.com"/>
-                                </div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
@@ -244,6 +247,7 @@ const CreateProfile = () => {
                         {/* --- SECTION 2: Professional Details (Freelancer) --- */}
                         <div className="bg-white p-8 md:p-10 rounded-2xl shadow-sm border border-gray-100 space-y-6">
                             <h2 className="text-2xl font-bold text-gray-800 mb-2 border-b border-gray-100 pb-4">Professional Details</h2>
+                            <DynamicPortfolioInput items={portfolioItems} onChange={handleListChange} />
                             <DynamicListInput name="services" label="Services You Offer" items={services} onChange={handleListChange} placeholder="e.g., Web Development, UI/UX Design" required={true} />
                             <DynamicEducationInput items={education} onChange={handleListChange} />
                             <DynamicListInput name="achievements" label="Certifications & Achievements" items={achievements} onChange={handleListChange} placeholder="e.g., AWS Certified Developer, Best UI Award" />

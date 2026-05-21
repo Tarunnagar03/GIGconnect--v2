@@ -9,10 +9,10 @@ async function main() {
   if (!MONGO_URI) throw new Error('Missing MONGO_URI');
   if (!JWT_SECRET) throw new Error('Missing JWT_SECRET');
 
-  const email = (ADMIN_EMAIL || '').toLowerCase();
-  const password = ADMIN_PASSWORD || '';
-  const username = (ADMIN_USERNAME || 'admin').toLowerCase();
-  const name = ADMIN_NAME || 'Admin';
+  const email = (ADMIN_EMAIL || 'nagart16@gmail.com').toLowerCase();
+  const password = ADMIN_PASSWORD || '123456789';
+  const username = (ADMIN_USERNAME || 'admin_bhai').toLowerCase();
+  const name = ADMIN_NAME || 'Super Admin';
 
   if (!email || !password) {
     throw new Error('Missing ADMIN_EMAIL or ADMIN_PASSWORD');
@@ -54,4 +54,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-

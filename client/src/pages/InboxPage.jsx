@@ -15,13 +15,14 @@ import React, { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { AuthContext } from '../context/AuthContext';
-import { SocketContext } from '../context/SocketContext';
+import { useSocket } from '../context/SocketContext';
+import { formatPreviewText } from '../utils/moderationEngine';
 
 const InboxPage = () => {
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
     const { auth } = useContext(AuthContext);
-    const { onlineUsers, socket } = useContext(SocketContext);
+    const { onlineUsers, socket } = useSocket();
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -110,7 +111,7 @@ const InboxPage = () => {
                                                         {otherParticipant.name || 'Unknown User'}
                                                     </p>
                                                     <p className="text-sm text-gray-500 truncate w-48 sm:w-64 md:w-96">
-                                                        {convo.lastMessage?.text || 'No messages yet'}
+                                                        {convo.lastMessage ? formatPreviewText(convo.lastMessage.text) : 'No messages yet'}
                                                     </p>
                                                 </div>
                                             </div>

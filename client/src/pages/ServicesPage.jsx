@@ -2,47 +2,19 @@ import React, { useState, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { AuthContext } from '../context/AuthContext';
-
-// Helper: Automatically assigns Icons & Colors based on keywords
-const getServiceTheme = (serviceName) => {
-    const lower = serviceName.toLowerCase();
-    if (/(web|app|dev|react|node|python|software|code|program|api|html|css)/.test(lower)) return { icon: '💻', color: 'text-blue-600 bg-blue-50 border-blue-100' };
-    if (/(design|ui|ux|graphic|logo|art|draw|illustrat|figma|photoshop)/.test(lower)) return { icon: '🎨', color: 'text-pink-600 bg-pink-50 border-pink-100' };
-    if (/(seo|market|ad|social|promot|sale|brand|growth)/.test(lower)) return { icon: '📈', color: 'text-green-600 bg-green-50 border-green-100' };
-    if (/(write|content|translat|blog|copy|type|edit|proofread)/.test(lower)) return { icon: '✍️', color: 'text-yellow-600 bg-yellow-50 border-yellow-100' };
-    if (/(video|animat|edit|photo|film|audio|sound|music)/.test(lower)) return { icon: '🎬', color: 'text-purple-600 bg-purple-50 border-purple-100' };
-    if (/(business|consult|manag|admin|account|hr|finance|legal)/.test(lower)) return { icon: '💼', color: 'text-indigo-600 bg-indigo-50 border-indigo-100' };
-    return { icon: '✨', color: 'text-teal-600 bg-teal-50 border-teal-100' };
-};
-
-// Helper: Smart Skill Mapping Engine
-const getRelatedSkills = (serviceName, allSkills) => {
-    if (!allSkills || !Array.isArray(allSkills)) return [];
-    const lowerSrv = serviceName.toLowerCase();
-    const isWeb = /(web|app|dev|code|software|program|api|html|css|react|node)/.test(lowerSrv);
-    const isDesign = /(design|ui|ux|graphic|logo|art|illustrat|figma)/.test(lowerSrv);
-    const isMarketing = /(seo|market|ad|social|promot|sale|brand)/.test(lowerSrv);
-    const isWriting = /(write|content|translat|blog|copy|edit|proofread)/.test(lowerSrv);
-    const isVideo = /(video|animat|film|audio|sound|music)/.test(lowerSrv);
-    const isBusiness = /(business|consult|manag|admin|account|hr|finance|legal)/.test(lowerSrv);
-    return allSkills.map(s => s.trim()).filter(skill => {
-        if (!skill) return false;
-        const s = skill.toLowerCase();
-        if (isWeb && /(web|app|dev|code|software|program|api|html|css|js|javascript|typescript|react|node|python|java|c#|c\+\+|sql|mongo|aws|docker|git)/.test(s)) return true;
-        if (isDesign && /(design|ui|ux|graphic|logo|art|illustrat|figma|photoshop|canva|adobe|sketch|color)/.test(s)) return true;
-        if (isMarketing && /(seo|market|ad|social|promot|sale|brand|google|facebook|instagram|tiktok|email)/.test(s)) return true;
-        if (isWriting && /(write|content|translat|blog|copy|edit|proofread|word|typing)/.test(s)) return true;
-        if (isVideo && /(video|animat|film|audio|sound|music|premiere|after effects|vfx)/.test(s)) return true;
-        if (isBusiness && /(business|consult|manag|admin|account|hr|finance|legal|excel|data entry)/.test(s)) return true;
-        if (s.includes(lowerSrv) || lowerSrv.includes(s)) return true;
-        return false;
-    });
-};
+import { getServiceTheme, getRelatedSkills } from '../utils/serviceHelpers';
 
 const ServicesPage = () => {
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const { auth } = useContext(AuthContext);
+    
+    // --- NEW: Package Builder State ---
+    const [isPackageModalOpen, setIsPackageModalOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [newPackage, setNewPackage] = useState({
+        type: 'package', title: '', price: '', deliveryTime: '', description: ''
+    });
 
     useEffect(() => {
         if (auth.user?.role === 'Freelancer') {
@@ -54,6 +26,42 @@ const ServicesPage = () => {
             setLoading(false); // No profile to load for clients
         }
     }, [auth.user]);
+
+    // --- NEW: Save Package Logic ---
+    const handleSavePackage = async (e) => {
+        e.preventDefault();
+        setIsSaving(true);
+        try {
+            const safeProfile = profile || {};
+            const updatedServices = [...(safeProfile.services || []), JSON.stringify(newPackage)];
+            const payload = {
+                ...safeProfile,
+                education: (safeProfile.education || []).map(item => typeof item === 'object' ? JSON.stringify(item) : item),
+                services: updatedServices
+            };
+            await api.post('/profiles', payload);
+            setProfile(payload); // Optimistic UI update
+            setIsPackageModalOpen(false);
+            setNewPackage({ type: 'package', title: '', price: '', deliveryTime: '', description: '' });
+        } catch (err) {
+            alert("Failed to save package.");
+        } finally { setIsSaving(false); }
+    };
+
+    const handleDeleteService = async (indexToRemove) => {
+        if (!window.confirm("Delete this service/package?")) return;
+        try {
+            const safeProfile = profile || {};
+            const updatedServices = (safeProfile.services || []).filter((_, i) => i !== indexToRemove);
+            const payload = {
+                ...safeProfile,
+                education: (safeProfile.education || []).map(item => typeof item === 'object' ? JSON.stringify(item) : item),
+                services: updatedServices
+            };
+            await api.post('/profiles', payload);
+            setProfile(payload);
+        } catch (err) { alert("Failed to delete."); }
+    };
 
     // Client View
     if (auth.user?.role === 'Client') {
@@ -103,19 +111,89 @@ const ServicesPage = () => {
             </Link>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
                 <div>
-                    <h1 className="text-4xl font-extrabold mb-2 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent tracking-tight">My Services</h1>
-                    <p className="text-lg text-gray-500 font-medium">Manage the services you offer to clients.</p>
+                    <h1 className="text-4xl font-extrabold mb-2 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent tracking-tight">My Project Catalog</h1>
+                    <p className="text-lg text-gray-500 font-medium">Create ready-to-buy packages for clients.</p>
                 </div>
-                <Link to="/create-profile" className="bg-white border-2 border-blue-600 text-blue-600 font-bold py-2.5 px-6 rounded-full hover:bg-blue-50 transition-colors shadow-sm whitespace-nowrap">
-                    Edit Services
-                </Link>
+                <div className="flex gap-3">
+                    <Link to="/create-profile" className="bg-white border-2 border-gray-200 text-gray-700 font-bold py-2.5 px-6 rounded-full hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap">
+                        Edit Basic Services
+                    </Link>
+                {profile && (
+                    <button onClick={() => setIsPackageModalOpen(true)} className="bg-blue-600 text-white font-bold py-2.5 px-6 rounded-full hover:bg-blue-700 transition-colors shadow-md whitespace-nowrap flex items-center gap-2">
+                        + Create Package
+                    </button>
+                )}
+                </div>
             </div>
+
+            {/* --- NEW: Package Builder Modal --- */}
+            {isPackageModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-slide-up">
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <h3 className="font-extrabold text-xl text-gray-800">Create New Package</h3>
+                            <button onClick={() => setIsPackageModalOpen(false)} className="text-gray-400 hover:text-red-500 text-2xl">&times;</button>
+                        </div>
+                        <form onSubmit={handleSavePackage} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-2">Package Title</label>
+                                <input type="text" required value={newPackage.title} onChange={e => setNewPackage({...newPackage, title: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-800" placeholder="I will design a modern logo..." />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-2">Fixed Price (₹)</label>
+                                    <input type="number" required value={newPackage.price} onChange={e => setNewPackage({...newPackage, price: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-green-500 outline-none font-bold text-green-700" placeholder="2500" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-2">Delivery Time</label>
+                                    <input type="text" required value={newPackage.deliveryTime} onChange={e => setNewPackage({...newPackage, deliveryTime: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-800" placeholder="e.g. 2 Days" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-2">What's Included? (Deliverables)</label>
+                                <textarea required rows="3" value={newPackage.description} onChange={e => setNewPackage({...newPackage, description: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none text-gray-700" placeholder="3 Revisions, Source Files, High Resolution..."></textarea>
+                            </div>
+                            <button type="submit" disabled={isSaving} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md mt-2 disabled:bg-gray-400 text-lg">
+                                {isSaving ? 'Saving...' : 'Publish Package 🚀'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {loading ? (
                 <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>
             ) : profile && profile.services?.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {(Array.isArray(profile.services) ? profile.services : typeof profile.services === 'string' ? profile.services.split(',') : []).map((service, index) => {
-                        const srv = service.trim();
+                    {(Array.isArray(profile.services) ? profile.services : typeof profile.services === 'string' ? profile.services.split(',') : []).map((s, index) => {
+                        let service = s;
+                        if (typeof s === 'string') { try { const p = JSON.parse(s); if (p.type === 'package') service = p; } catch(e){} }
+                        
+                        if (typeof service === 'object' && service.type === 'package') {
+                            return (
+                                <div key={index} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-2 flex flex-col h-full group relative overflow-hidden">
+                                    <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-green-400 to-emerald-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <span className="bg-green-50 text-green-700 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border border-green-100">Ready to Buy</span>
+                                        <button onClick={() => handleDeleteService(index)} className="text-gray-400 hover:text-red-500 font-bold px-2 bg-gray-50 rounded-md">✕</button>
+                                    </div>
+                                    <h3 className="text-xl font-bold text-gray-900 mb-2 line-clamp-2">{service.title}</h3>
+                                    <p className="text-gray-500 text-sm mb-6 line-clamp-3 leading-relaxed flex-1">{service.description}</p>
+                                    <div className="mt-auto border-t border-gray-100 pt-4 flex items-end justify-between">
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Delivery</p>
+                                            <p className="text-sm font-bold text-gray-800">⏱️ {service.deliveryTime}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Fixed Price</p>
+                                            <p className="text-2xl font-black text-green-600">₹{service.price}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        const srv = typeof service === 'string' ? service.trim() : '';
                         if (!srv) return null;
                         const theme = getServiceTheme(srv);
                         const allSkills = Array.isArray(profile.skills) ? profile.skills : typeof profile.skills === 'string' ? profile.skills.split(',') : [];
@@ -142,10 +220,9 @@ const ServicesPage = () => {
                                     </div>
                                 )}
 
-                                <div className="mt-auto">
-                                    <span className={`inline-block border font-bold py-2 px-4 rounded-xl text-sm ${theme.color}`}>
-                                        ✓ Publishing
-                                    </span>
+                                <div className="mt-auto flex justify-between items-end">
+                                    <span className={`inline-block border font-bold py-1.5 px-3 rounded-xl text-xs ${theme.color}`}>✓ Publishing</span>
+                                    <button onClick={() => handleDeleteService(index)} className="text-gray-400 hover:text-red-500 font-bold px-2 bg-gray-50 rounded-md">✕</button>
                                 </div>
                             </div>
                         );

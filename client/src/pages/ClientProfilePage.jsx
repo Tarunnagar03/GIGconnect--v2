@@ -2,15 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { AuthContext } from '../context/AuthContext';
-
-// A simple Star Rating display component
-const StarRating = ({ rating }) => {
-    const stars = [];
-    for (let i = 1; i <= 5; i++) {
-        stars.push(<span key={i} className={`text-xl ${i <= rating ? 'text-yellow-400' : 'text-gray-300'}`}>★</span>);
-    }
-    return <div className="flex items-center">{stars}</div>;
-};
+import StarRating from '../components/StarRating';
 
 const ClientProfilePage = () => {
     const { clientId } = useParams();

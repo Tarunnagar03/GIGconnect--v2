@@ -9,7 +9,7 @@ const ProposalSchema = new mongoose.Schema({
     bidAmount: { type: Number, required: true },
     status: {
         type: String,
-        enum: ['Submitted', 'Accepted', 'Rejected', 'Withdrawn'],
+        enum: ['Submitted', 'Interviewing', 'Accepted', 'Rejected', 'Withdrawn'],
         default: 'Submitted'
     },
     // --- FIELD ADDED ---

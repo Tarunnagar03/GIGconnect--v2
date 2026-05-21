@@ -2,7 +2,7 @@ const Contact = require('../models/Contact');
 const nodemailer = require('nodemailer');
 
 exports.handleContactForm = async (req, res) => {
-    const { name, email, message } = req.body;
+    const { name, email, subject, message } = req.body;
 
     if (!name || !email) {
         return res.status(400).json({ msg: 'Name and Email are required.' });
@@ -10,7 +10,7 @@ exports.handleContactForm = async (req, res) => {
 
     try {
         // TareeKa 1: Message ko pehle MongoDB Database mein save karein
-        const newContact = new Contact({ name, email, message });
+        const newContact = new Contact({ name, email, subject, message });
         await newContact.save();
 
         // Tareeka 2: Message ko Email ke through Admin ko send karein
@@ -28,8 +28,8 @@ exports.handleContactForm = async (req, res) => {
                     from: process.env.EMAIL_USER,
                     to: process.env.EMAIL_USER, // Yeh email Admin (.env wale) ko jayegi
                     replyTo: email, // Taaki Admin direct reply kare toh user ko jaye
-                    subject: `GigConnect: New Contact Request from ${name}`,
-                    text: `You have received a new message!\n\nName: ${name}\nEmail: ${email}\nMessage:\n${message || 'No message provided.'}`
+                    subject: `[${subject || 'Inquiry'}] New Request from ${name} - GigConnect`,
+                    text: `You have received a new message!\n\nName: ${name}\nEmail: ${email}\nCategory: ${subject || 'General Inquiry'}\n\nMessage:\n${message || 'No message provided.'}`
                 };
 
                 await transporter.sendMail(mailOptions);
@@ -43,5 +43,16 @@ exports.handleContactForm = async (req, res) => {
     } catch (err) {
         console.error('Contact Form Error:', err);
         res.status(500).json({ msg: 'Failed to send message. Please check server logs.' });
+    }
+};
+
+// --- NEW: Admin Delete Contact Message ---
+exports.deleteContactMessage = async (req, res) => {
+    try {
+        await Contact.findByIdAndDelete(req.params.id);
+        res.status(200).json({ msg: 'Contact message deleted successfully.' });
+    } catch (err) {
+        console.error('Delete Contact Error:', err);
+        res.status(500).json({ msg: 'Failed to delete message.' });
     }
 };

@@ -15,6 +15,7 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Gig = require('../models/Gig');
 const Transaction = require('../models/Transaction'); // Import the Transaction model
+const User = require('../models/User'); // Import User for Stripe Connect
 
 async function applySuccessfulPaymentIntent(paymentIntent) {
     // idempotent transaction insert
@@ -38,6 +39,17 @@ async function applySuccessfulPaymentIntent(paymentIntent) {
 
     const paidAmount = paymentIntent.amount / 100;
     gig.paidAmount = Number(gig.paidAmount || 0) + paidAmount;
+
+    // Enterprise Escrow Automation: Add funds to Freelancer's Wallet
+    // Deducting a standard 10% platform fee
+    if (gig.assignedFreelancer) {
+        const freelancer = await User.findById(gig.assignedFreelancer);
+        if (freelancer) {
+            const platformFee = paidAmount * 0.10;
+            freelancer.walletBalance = (freelancer.walletBalance || 0) + (paidAmount - platformFee);
+            await freelancer.save();
+        }
+    }
 
     const idxStr = paymentIntent.metadata.milestoneIndex;
     if (idxStr !== undefined && idxStr !== null) {
@@ -160,4 +172,75 @@ exports.stripeWebhook = async (req, res) => {
 
     // Return a 200 response to acknowledge receipt of the event
     res.json({ received: true });
+};
+
+// @desc    Setup Stripe Connect Express Account for Freelancers
+exports.setupStripeConnect = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ msg: 'User not found' });
+        
+        let accountId = user.stripeAccountId;
+        
+        // 1. Create Stripe Account if it doesn't exist
+        if (!accountId) {
+            const account = await stripe.accounts.create({
+                type: 'express',
+                email: user.email,
+                capabilities: {
+                    transfers: { requested: true },
+                },
+            });
+            accountId = account.id;
+            user.stripeAccountId = accountId;
+            await user.save();
+        }
+
+        // 2. Create onboarding link
+        const accountLink = await stripe.accountLinks.create({
+            account: accountId,
+            refresh_url: `${req.headers.origin}/settings/billing?refresh=true`,
+            return_url: `${req.headers.origin}/settings/billing?success=true`,
+            type: 'account_onboarding',
+        });
+
+        res.json({ url: accountLink.url });
+    } catch (err) {
+        console.error("Stripe Connect Setup Error:", err);
+        res.status(500).json({ msg: err.message || 'Failed to setup Stripe Connect' });
+    }
+};
+
+// @desc    Request a Stripe Payout to connected bank account
+exports.requestPayout = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ msg: 'User not found' });
+        if (!user.stripeAccountId) return res.status(400).json({ msg: 'Stripe account not connected. Please set up payouts in Billing Settings.' });
+        if (user.walletBalance <= 0) return res.status(400).json({ msg: 'Insufficient balance to withdraw.' });
+
+        // Create Stripe Transfer/Payout to the connected Express account
+        const payout = await stripe.transfers.create({
+            amount: Math.round(user.walletBalance * 100), // convert to paise
+            currency: 'inr',
+            destination: user.stripeAccountId,
+        });
+
+        // Record transaction
+        await Transaction.create({
+            user: user._id,
+            amount: user.walletBalance,
+            type: 'payout',
+            status: 'successful'
+        });
+
+        // Reset wallet balance to 0
+        user.walletBalance = 0;
+        await user.save();
+
+        res.json({ msg: 'Payout successful! Funds are on the way to your bank account.', payout });
+    } catch (err) {
+        console.error('Payout Error:', err);
+        res.status(500).json({ msg: err.message || 'Failed to process payout' });
+    }
 };

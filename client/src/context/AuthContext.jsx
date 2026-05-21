@@ -17,12 +17,15 @@
  * - Protected context for sensitive operations
  */
 
-/* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
 import { jwtDecode } from 'jwt-decode';
 import api from '../api';
 
+// FIX: Isko wapas export karna hoga taaki baaki saare pages crash na karein
 export const AuthContext = createContext();
+
+// Enterprise Best Practice: Custom Hook to consume Context (Fixes Vite HMR Warning)
+export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
     const [auth, setAuth] = useState({ token: null, user: null, isAuthenticated: false });

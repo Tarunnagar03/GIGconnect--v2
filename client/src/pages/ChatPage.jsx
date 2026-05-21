@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { SocketContext } from '../context/SocketContext';
+import { useSocket } from '../context/SocketContext';
 import { AuthContext } from '../context/AuthContext';
 import api from '../api';
+import { moderateHtmlText, checkMessageViolations } from '../utils/moderationEngine';
+import ErrorBoundary from '../components/ErrorBoundary';
+
+const renderMessageText = (text) => <span dangerouslySetInnerHTML={{ __html: moderateHtmlText(text) }} />;
 
 const ChatPage = () => {
     const { recipientId } = useParams();
-    const { socket } = useContext(SocketContext);
+    const { socket } = useSocket();
     const { auth } = useContext(AuthContext);
     const location = useLocation();
     const serviceQuery = new URLSearchParams(location.search).get('service');
@@ -71,11 +75,9 @@ const ChatPage = () => {
         
         // 2. Tell the server to join this specific room
         socket.emit('joinRoom', newRoomName);
-        console.log(`[ChatPage] User ${auth.user.name} attempting to join room: ${newRoomName}`);
 
         // 3. Set up the event listener for incoming messages
         const onReceiveMessage = (messageData) => {
-            console.log('[ChatPage] Received message from server:', messageData); // For debugging
             if (String(messageData.senderId) === String(recipientId)) {
                 socket.emit('markAsRead', { roomName: newRoomName, userId: auth.user.id });
             }
@@ -119,7 +121,6 @@ const ChatPage = () => {
 
         // 5. IMPORTANT: Cleanup function to remove the listener when leaving the page
         return () => {
-            console.log(`[ChatPage] Leaving room: ${newRoomName}`);
             socket.off('receiveMessage', onReceiveMessage);
             socket.off('typing', onTyping);
             socket.off('stopTyping', onStopTyping);
@@ -130,6 +131,14 @@ const ChatPage = () => {
 
     const handleSendMessage = (e) => {
         e.preventDefault();
+
+        const violation = checkMessageViolations(newMessage);
+        if (violation.action === 'BLOCK') {
+            alert(violation.msg);
+            return;
+        }
+        if (violation.action === 'WARN' && !window.confirm(violation.msg)) return;
+
         if ((newMessage.trim() || attachment) && roomName && socket) {
             
             // 1. Send attachment if it exists using Data Serialization
@@ -230,6 +239,18 @@ const ChatPage = () => {
         }
     };
 
+    const handleStartInterview = () => {
+        setShowActions(false);
+        const meetingLink = `https://meet.jit.si/GigConnect-${roomName}-${Date.now()}`;
+        const meetingData = { link: meetingLink, title: 'Video Interview' };
+        const meetString = `[MEETING]:::${JSON.stringify(meetingData)}`;
+        const messageData = {
+            senderId: auth.user.id, senderName: auth.user.name,
+            text: meetString, timestamp: new Date().toISOString(), status: 'delivered'
+        };
+        socket.emit('sendMessage', { roomName, messageData });
+    };
+
     if (loading) {
         return <div className="text-center mt-20">Loading Chat...</div>;
     }
@@ -237,290 +258,321 @@ const ChatPage = () => {
     return (
         <div className="flex flex-col h-[85vh] max-w-4xl mx-auto border border-gray-200 rounded-3xl shadow-2xl bg-gray-50 overflow-hidden animate-fade-in">
             {/* Clean White Sticky Header */}
-            <div className="bg-white/95 backdrop-blur-md p-4 border-b border-gray-200 flex items-center gap-4 sticky top-0 z-10 shadow-sm">
-                <Link to="/inbox" className="p-2 -ml-2 text-gray-500 hover:text-gray-800 transition-colors rounded-full hover:bg-gray-100">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                </Link>
-                <div className="flex items-center gap-3">
-                    <Link to={recipientRole === 'Client' ? `/client-profile/${recipientId}` : `/profile/${recipientId}`} className="flex items-center gap-3 group" title="View Profile">
-                        <div className="w-11 h-11 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm group-hover:scale-105 transition-transform">
-                            {(recipientName || 'U').charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{recipientName}</h1>
-                            {recipientRole && <p className="text-xs text-gray-500 font-medium leading-none mt-0.5">{recipientRole}</p>}
-                        </div>
+            <ErrorBoundary componentName="Chat Header">
+                <div className="bg-white/95 backdrop-blur-md p-4 border-b border-gray-200 flex items-center gap-4 sticky top-0 z-10 shadow-sm">
+                    <Link to="/inbox" className="p-2 -ml-2 text-gray-500 hover:text-gray-800 transition-colors rounded-full hover:bg-gray-100">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                     </Link>
+                    <div className="flex items-center gap-3">
+                        <Link to={recipientRole === 'Client' ? `/client-profile/${recipientId}` : `/profile/${recipientId}`} className="flex items-center gap-3 group" title="View Profile">
+                            <div className="w-11 h-11 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm group-hover:scale-105 transition-transform">
+                                {(recipientName || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <h1 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{recipientName}</h1>
+                                {recipientRole && <p className="text-xs text-gray-500 font-medium leading-none mt-0.5">{recipientRole}</p>}
+                            </div>
+                        </Link>
+                    </div>
                 </div>
-            </div>
+            </ErrorBoundary>
 
             {/* Chat Area */}
-            <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-[#e5e5f7]/30">
-                {messages.length === 0 && !loading && (
-                    <div className="flex justify-center mt-10">
-                        <div className="text-center text-gray-500 bg-white px-6 py-4 rounded-2xl shadow-sm border border-gray-100">
-                            <p className="font-semibold text-gray-700">No messages yet.</p>
-                            <p className="text-sm mt-1">Start the conversation with {recipientName}!</p>
+            <ErrorBoundary componentName="Message History">
+                <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-[#e5e5f7]/30">
+                    {messages.length === 0 && !loading && (
+                        <div className="flex justify-center mt-10">
+                            <div className="text-center text-gray-500 bg-white px-6 py-4 rounded-2xl shadow-sm border border-gray-100">
+                                <p className="font-semibold text-gray-700">No messages yet.</p>
+                                <p className="text-sm mt-1">Start the conversation with {recipientName}!</p>
+                            </div>
                         </div>
-                    </div>
-                )}
-                {(Array.isArray(messages) ? messages : []).map((msg, index) => {
-                    // FIX: Robust check for Sender ID whether from Live Socket or Database
-                    const msgSenderId = msg.senderId || (msg.sender?._id || msg.sender);
-                    const isMe = String(msgSenderId) === String(auth.user?.id);
-                    const senderDisplayName = msg.senderName || (isMe ? auth.user?.name : recipientName);
+                    )}
+                    {(Array.isArray(messages) ? messages : []).map((msg, index) => {
+                        // FIX: Robust check for Sender ID whether from Live Socket or Database
+                        const msgSenderId = msg.senderId || (msg.sender?._id || msg.sender);
+                        const isMe = String(msgSenderId) === String(auth.user?.id);
+                        const senderDisplayName = msg.senderName || (isMe ? auth.user?.name : recipientName);
 
-                    let isCustomOffer = false;
-                    let offerData = null;
-                    let isOfferAccepted = false;
-                    let acceptedData = null;
-                    let isAttachment = false;
-                    let attachmentData = null;
-                    let isAudio = false;
-                    let audioData = null;
+                        let isCustomOffer = false;
+                        let offerData = null;
+                        let isOfferAccepted = false;
+                        let acceptedData = null;
+                        let isAttachment = false;
+                        let attachmentData = null;
+                        let isAudio = false;
+                        let audioData = null;
+                        let isMeeting = false;
+                        let meetingData = null;
 
-                    if (typeof msg.text === 'string' && msg.text.startsWith('[CUSTOM_OFFER]:::')) {
-                        isCustomOffer = true;
-                        try {
-                            offerData = JSON.parse(msg.text.replace('[CUSTOM_OFFER]:::', ''));
-                        } catch(e) { isCustomOffer = false; }
-                    }
-                    else if (typeof msg.text === 'string' && msg.text.startsWith('[OFFER_ACCEPTED]:::')) {
-                        isOfferAccepted = true;
-                        try {
-                            acceptedData = JSON.parse(msg.text.replace('[OFFER_ACCEPTED]:::', ''));
-                        } catch(e) { isOfferAccepted = false; }
-                    }
-                    else if (typeof msg.text === 'string' && msg.text.startsWith('[ATTACHMENT]:::')) {
-                        isAttachment = true;
-                        try {
-                            attachmentData = JSON.parse(msg.text.replace('[ATTACHMENT]:::', ''));
-                        } catch(e) { isAttachment = false; }
-                    }
-                    else if (typeof msg.text === 'string' && msg.text.startsWith('[AUDIO]:::')) {
-                        isAudio = true;
-                        try {
-                            audioData = JSON.parse(msg.text.replace('[AUDIO]:::', ''));
-                        } catch(e) { isAudio = false; }
-                    }
+                        if (typeof msg.text === 'string' && msg.text.startsWith('[CUSTOM_OFFER]:::')) {
+                            isCustomOffer = true;
+                            try {
+                                offerData = JSON.parse(msg.text.replace('[CUSTOM_OFFER]:::', ''));
+                            } catch(e) { isCustomOffer = false; }
+                        }
+                        else if (typeof msg.text === 'string' && msg.text.startsWith('[OFFER_ACCEPTED]:::')) {
+                            isOfferAccepted = true;
+                            try {
+                                acceptedData = JSON.parse(msg.text.replace('[OFFER_ACCEPTED]:::', ''));
+                            } catch(e) { isOfferAccepted = false; }
+                        }
+                        else if (typeof msg.text === 'string' && msg.text.startsWith('[ATTACHMENT]:::')) {
+                            isAttachment = true;
+                            try {
+                                attachmentData = JSON.parse(msg.text.replace('[ATTACHMENT]:::', ''));
+                            } catch(e) { isAttachment = false; }
+                        }
+                        else if (typeof msg.text === 'string' && msg.text.startsWith('[AUDIO]:::')) {
+                            isAudio = true;
+                            try {
+                                audioData = JSON.parse(msg.text.replace('[AUDIO]:::', ''));
+                            } catch(e) { isAudio = false; }
+                        } else if (typeof msg.text === 'string' && msg.text.startsWith('[MEETING]:::')) {
+                            isMeeting = true;
+                            try {
+                                meetingData = JSON.parse(msg.text.replace('[MEETING]:::', ''));
+                            } catch(e) { isMeeting = false; }
+                        }
 
-                    return (
-                    <div key={index} className={`mb-4 flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                        <div className={`max-w-[85%] lg:max-w-md ${(isCustomOffer || isOfferAccepted || isAttachment || isAudio) ? '' : 'px-5 py-3'} rounded-3xl shadow-sm ${(!isCustomOffer && !isOfferAccepted && !isAttachment && !isAudio) ? (isMe ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-sm') : ''}`}>
-                            {isCustomOffer && offerData ? (
-                                <div className={`w-full sm:w-80 border ${isMe ? 'border-blue-200 bg-blue-50 text-gray-800' : 'border-gray-200 bg-white text-gray-800'} rounded-2xl p-5 shadow-md`}>
-                                    <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-200/60">
-                                        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-xl border border-gray-100">📄</div>
+                        return (
+                        <div key={index} className={`mb-4 flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                            <div className={`max-w-[85%] lg:max-w-md ${(isCustomOffer || isOfferAccepted || isAttachment || isAudio || isMeeting) ? '' : 'px-5 py-3'} rounded-3xl shadow-sm ${(!isCustomOffer && !isOfferAccepted && !isAttachment && !isAudio && !isMeeting) ? (isMe ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-sm') : ''}`}>
+                                {isCustomOffer && offerData ? (
+                                    <div className={`w-full sm:w-80 border ${isMe ? 'border-blue-200 bg-blue-50 text-gray-800' : 'border-gray-200 bg-white text-gray-800'} rounded-2xl p-5 shadow-md`}>
+                                        <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-200/60">
+                                            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-xl border border-gray-100">📄</div>
+                                            <div>
+                                                <p className="text-sm font-extrabold text-gray-800">Custom Offer</p>
+                                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{isMe ? 'Sent by you' : `From ${senderDisplayName}`}</p>
+                                            </div>
+                                        </div>
+                                        <p className="text-sm text-gray-700 mb-5 italic line-clamp-3">"{offerData.description}"</p>
+                                        <div className="flex justify-between items-center mb-5 bg-white/60 p-3 rounded-xl border border-gray-200/50 shadow-sm">
+                                            <div>
+                                                <p className="text-[10px] text-gray-400 font-black uppercase tracking-wider">Amount</p>
+                                                <p className="text-lg font-extrabold text-green-600">₹{offerData.amount}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-[10px] text-gray-400 font-black uppercase tracking-wider">Delivery</p>
+                                                <p className="text-sm font-bold text-gray-800">{offerData.time}</p>
+                                            </div>
+                                        </div>
+                                        {!isMe ? (
+                                            <button onClick={() => {
+                                                if (window.confirm(`Accept this offer for ₹${offerData.amount}?`)) {
+                                                    const acceptText = `[OFFER_ACCEPTED]:::${JSON.stringify(offerData)}`;
+                                                    const messageData = { senderId: auth.user.id, senderName: auth.user.name, text: acceptText, timestamp: new Date().toISOString() };
+                                                    socket.emit('sendMessage', { roomName, messageData });
+                                                }
+                                            }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md hover:shadow-lg text-sm">Accept Offer</button>
+                                        ) : (
+                                            <p className="text-xs text-center text-gray-500 font-bold bg-white/50 py-2 rounded-lg border border-gray-100">Waiting for response...</p>
+                                        )}
+                                    </div>
+                                ) : isOfferAccepted && acceptedData ? (
+                                    <div className={`w-full sm:w-80 border ${isMe ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'} rounded-2xl p-4 shadow-sm flex items-center gap-4`}>
+                                        <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xl shrink-0 shadow-inner">🤝</div>
                                         <div>
-                                            <p className="text-sm font-extrabold text-gray-800">Custom Offer</p>
-                                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{isMe ? 'Sent by you' : `From ${senderDisplayName}`}</p>
+                                            <p className="text-sm font-extrabold text-gray-800">Offer Accepted!</p>
+                                            <p className="text-xs text-gray-600 font-medium">₹{acceptedData.amount} for {acceptedData.time}</p>
+                                            <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">{isMe ? 'You accepted' : `${senderDisplayName} accepted`}</p>
                                         </div>
                                     </div>
-                                    <p className="text-sm text-gray-700 mb-5 italic line-clamp-3">"{offerData.description}"</p>
-                                    <div className="flex justify-between items-center mb-5 bg-white/60 p-3 rounded-xl border border-gray-200/50 shadow-sm">
-                                        <div>
-                                            <p className="text-[10px] text-gray-400 font-black uppercase tracking-wider">Amount</p>
-                                            <p className="text-lg font-extrabold text-green-600">₹{offerData.amount}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[10px] text-gray-400 font-black uppercase tracking-wider">Delivery</p>
-                                            <p className="text-sm font-bold text-gray-800">{offerData.time}</p>
-                                        </div>
-                                    </div>
-                                    {!isMe ? (
-                                        <button onClick={() => {
-                                            if (window.confirm(`Accept this offer for ₹${offerData.amount}?`)) {
-                                                const acceptText = `[OFFER_ACCEPTED]:::${JSON.stringify(offerData)}`;
-                                                const messageData = { senderId: auth.user.id, senderName: auth.user.name, text: acceptText, timestamp: new Date().toISOString() };
-                                                socket.emit('sendMessage', { roomName, messageData });
-                                            }
-                                        }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md hover:shadow-lg text-sm">Accept Offer</button>
-                                    ) : (
-                                        <p className="text-xs text-center text-gray-500 font-bold bg-white/50 py-2 rounded-lg border border-gray-100">Waiting for response...</p>
-                                    )}
-                                </div>
-                            ) : isOfferAccepted && acceptedData ? (
-                                <div className={`w-full sm:w-80 border ${isMe ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'} rounded-2xl p-4 shadow-sm flex items-center gap-4`}>
-                                    <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xl shrink-0 shadow-inner">🤝</div>
-                                    <div>
-                                        <p className="text-sm font-extrabold text-gray-800">Offer Accepted!</p>
-                                        <p className="text-xs text-gray-600 font-medium">₹{acceptedData.amount} for {acceptedData.time}</p>
-                                        <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">{isMe ? 'You accepted' : `${senderDisplayName} accepted`}</p>
-                                    </div>
-                                </div>
-                            ) : isAttachment && attachmentData ? (
-                                <div 
-                                    className={`w-full sm:w-80 border ${isMe ? 'border-blue-400 bg-blue-600' : 'border-gray-200 bg-white'} rounded-2xl p-2 shadow-sm cursor-pointer hover:opacity-95 transition-opacity`}
-                                    onClick={() => {
-                                        const a = document.createElement('a');
-                                        a.href = attachmentData.content;
-                                        a.download = attachmentData.name;
-                                        a.click();
-                                    }}
-                                    title="Click to download"
-                                >
-                                    {attachmentData.type?.startsWith('image/') && attachmentData.content && (
-                                        <img src={attachmentData.content} alt={attachmentData.name} className="w-full h-40 object-cover rounded-xl mb-2 bg-white" />
-                                    )}
-                                    <div className={`flex items-center gap-3 p-3 rounded-xl ${isMe ? 'bg-blue-700/50' : 'bg-gray-50'}`}>
-                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-sm shrink-0 ${isMe ? 'bg-blue-500' : 'bg-white border border-gray-200'}`}>
-                                            {attachmentData.type?.startsWith('image/') ? '🖼️' : '📄'}
-                                        </div>
-                                        <div className="overflow-hidden flex-1">
-                                            <p className={`text-sm font-bold truncate ${isMe ? 'text-white' : 'text-gray-800'}`}>{attachmentData.name}</p>
-                                            <p className={`text-[10px] font-medium ${isMe ? 'text-blue-200' : 'text-gray-500'}`}>{(attachmentData.size / 1024).toFixed(1)} KB</p>
-                                        </div>
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isMe ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}>
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                ) : isAttachment && attachmentData ? (
+                                    <div 
+                                        className={`w-full sm:w-80 border ${isMe ? 'border-blue-400 bg-blue-600' : 'border-gray-200 bg-white'} rounded-2xl p-2 shadow-sm cursor-pointer hover:opacity-95 transition-opacity`}
+                                        onClick={() => {
+                                            const a = document.createElement('a');
+                                            a.href = attachmentData.content;
+                                            a.download = attachmentData.name;
+                                            a.click();
+                                        }}
+                                        title="Click to download"
+                                    >
+                                        {attachmentData.type?.startsWith('image/') && attachmentData.content && (
+                                            <img src={attachmentData.content} alt={attachmentData.name} className="w-full h-40 object-cover rounded-xl mb-2 bg-white" />
+                                        )}
+                                        <div className={`flex items-center gap-3 p-3 rounded-xl ${isMe ? 'bg-blue-700/50' : 'bg-gray-50'}`}>
+                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-sm shrink-0 ${isMe ? 'bg-blue-500' : 'bg-white border border-gray-200'}`}>
+                                                {attachmentData.type?.startsWith('image/') ? '🖼️' : '📄'}
+                                            </div>
+                                            <div className="overflow-hidden flex-1">
+                                                <p className={`text-sm font-bold truncate ${isMe ? 'text-white' : 'text-gray-800'}`}>{attachmentData.name}</p>
+                                                <p className={`text-[10px] font-medium ${isMe ? 'text-blue-200' : 'text-gray-500'}`}>{(attachmentData.size / 1024).toFixed(1)} KB</p>
+                                            </div>
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isMe ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ) : isAudio && audioData ? (
-                                <div className={`flex items-center gap-3 p-1.5 rounded-full shadow-sm ${isMe ? 'bg-blue-700/80 border border-blue-600' : 'bg-white border border-gray-200'}`}>
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-inner shrink-0 ${isMe ? 'bg-blue-500' : 'bg-gray-100'}`}>
-                                        🎙️
+                                ) : isAudio && audioData ? (
+                                    <div className={`flex items-center gap-3 p-1.5 rounded-full shadow-sm ${isMe ? 'bg-blue-700/80 border border-blue-600' : 'bg-white border border-gray-200'}`}>
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-inner shrink-0 ${isMe ? 'bg-blue-500' : 'bg-gray-100'}`}>
+                                            🎙️
+                                        </div>
+                                        <audio controls src={audioData.content} className="max-w-[180px] sm:max-w-[220px] h-8 outline-none bg-transparent" />
                                     </div>
-                                    <audio controls src={audioData.content} className="max-w-[180px] sm:max-w-[220px] h-8 outline-none bg-transparent" />
-                                </div>
-                            ) : (
-                                <p className="text-[15px] leading-relaxed">{msg.text}</p>
-                            )}
-                        </div>
-                        <div className={`flex items-center gap-1 mt-1 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                            <p className="text-[11px] text-gray-400">
-                                {new Date(msg.timestamp || msg.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                            {isMe && (
-                                <div className={`flex -space-x-1.5 ${msg.status === 'read' ? 'text-blue-500' : 'text-gray-400'}`}>
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
-                                    {msg.status !== 'sent' && (
+                                ) : isMeeting && meetingData ? (
+                                    <div className={`w-full sm:w-80 border ${isMe ? 'border-purple-200 bg-purple-50 text-gray-800' : 'border-gray-200 bg-white text-gray-800'} rounded-2xl p-5 shadow-md`}>
+                                        <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-200/60">
+                                            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-xl border border-gray-100">📹</div>
+                                            <div>
+                                                <p className="text-sm font-extrabold text-gray-800">Video Interview</p>
+                                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{isMe ? 'Started by you' : `Started by ${senderDisplayName}`}</p>
+                                            </div>
+                                        </div>
+                                        <a href={meetingData.link} target="_blank" rel="noopener noreferrer" className="w-full block text-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition-all shadow-md hover:shadow-lg text-sm">Join Video Call</a>
+                                    </div>
+                                ) : (
+                                    <p className="text-[15px] leading-relaxed">{renderMessageText(msg.text)}</p>
+                                )}
+                            </div>
+                            <div className={`flex items-center gap-1 mt-1 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                <p className="text-[11px] text-gray-400">
+                                    {new Date(msg.timestamp || msg.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                                {isMe && (
+                                    <div className={`flex -space-x-1.5 ${msg.status === 'read' ? 'text-blue-500' : 'text-gray-400'}`}>
                                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
-                                    )}
-                                </div>
-                            )}
+                                        {msg.status !== 'sent' && (
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                );
-                })}
-                <div ref={messagesEndRef} />
-            </div>
+                    );
+                    })}
+                    <div ref={messagesEndRef} />
+                </div>
+            </ErrorBoundary>
 
             {/* Pill-shaped Input Area */}
-            <div className="p-4 bg-white border-t border-gray-200 relative">
-                
-                {/* Attachment Preview Banner */}
-                {attachment && (
-                    <div className="absolute bottom-full left-4 mb-2 bg-white border border-gray-200 shadow-xl rounded-2xl p-3 flex items-center gap-3 animate-slide-up z-40 pr-4">
-                        <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-2xl border border-blue-100 shadow-inner">
-                            {attachment.type?.startsWith('image/') ? '🖼️' : '📄'}
-                        </div>
-                        <div className="max-w-[200px] sm:max-w-[300px]">
-                            <p className="text-sm font-bold text-gray-800 truncate">{attachment.name}</p>
-                            <p className="text-xs text-gray-500 font-medium">Ready to send • {(attachment.size / 1024).toFixed(1)} KB</p>
-                        </div>
-                        <button onClick={() => setAttachment(null)} className="ml-auto w-8 h-8 bg-gray-100 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded-full flex items-center justify-center transition-colors font-bold shadow-sm">✕</button>
-                    </div>
-                )}
-
-                {/* Typing Indicator */}
-                {isTyping && (
-                    <div className="absolute -top-6 left-6 flex items-center gap-1.5 text-xs text-gray-500 font-medium bg-white/80 px-2 py-0.5 rounded-t-lg">
-                        <span className="flex gap-0.5">
-                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span>
-                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.15s'}}></span>
-                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.3s'}}></span>
-                        </span>
-                        {recipientName} is typing...
-                    </div>
-                )}
-
-                <form onSubmit={handleSendMessage} className="flex items-center gap-3">
-                    {isRecording ? (
-                        <div className="flex-1 py-3.5 px-6 bg-red-50 border border-red-200 rounded-full flex items-center justify-between text-red-600 animate-pulse shadow-inner">
-                            <div className="flex items-center gap-2 font-bold text-sm">
-                                <span className="w-2.5 h-2.5 bg-red-600 rounded-full shadow-[0_0_8px_rgba(220,38,38,0.8)]"></span>
-                                Recording Audio...
-                            </div>
-                            <span className="font-mono font-bold tracking-widest">
-                                {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
-                            </span>
-                            <button type="button" onClick={cancelRecording} className="text-sm font-bold hover:text-red-800 ml-4 bg-white px-3 py-1 rounded-full border border-red-100 shadow-sm transition-colors">Cancel</button>
-                        </div>
-                    ) : (
-                        <>
-                        <div className="relative" ref={actionsRef}>
-                        <button type="button" onClick={() => setShowActions(!showActions)} className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-blue-600 flex items-center justify-center transition-colors shadow-sm">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-                        </button>
-                        {showActions && (
-                            <div className="absolute bottom-full left-0 mb-3 w-56 bg-white border border-gray-100 shadow-2xl rounded-2xl p-2 animate-slide-up z-50">
-                                <label className="w-full text-left px-4 py-3 hover:bg-gray-50 rounded-xl flex items-center gap-3 transition-colors group cursor-pointer mb-1">
-                                    <div className="w-8 h-8 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">📎</div>
-                                    <div>
-                                        <p className="text-sm font-bold text-gray-800">Attach File</p>
-                                        <p className="text-[10px] text-gray-500">Images, PDFs, Docs</p>
-                                    </div>
-                                    <input type="file" className="hidden" onChange={(e) => { 
-                                        const file = e.target.files[0];
-                                        if(file) {
-                                            if (file.size > 3 * 1024 * 1024) {
-                                                alert('File size should be under 3MB for chat.');
-                                                return;
-                                            }
-                                            const reader = new FileReader();
-                                            reader.onload = (event) => {
-                                                setAttachment({
-                                                    name: file.name, size: file.size, type: file.type,
-                                                    content: event.target.result
-                                                });
-                                            };
-                                            reader.readAsDataURL(file);
-                                        }
-                                        setShowActions(false); 
-                                    }} />
-                                </label>
-                                <button type="button" onClick={() => { setShowActions(false); setIsOfferModalOpen(true); }} className="w-full text-left px-4 py-3 hover:bg-blue-50 rounded-xl flex items-center gap-3 transition-colors group">
-                                    <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">📄</div>
-                                    <div>
-                                        <p className="text-sm font-bold text-gray-800">Custom Offer</p>
-                                        <p className="text-[10px] text-gray-500">Send a tailored proposal</p>
-                                    </div>
-                                </button>
-                                <button type="button" onClick={() => { setShowActions(false); alert("Request Payment Feature Coming Soon!"); }} className="w-full text-left px-4 py-3 hover:bg-green-50 rounded-xl flex items-center gap-3 transition-colors group mt-1">
-                                    <div className="w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">💳</div>
-                                    <div>
-                                        <p className="text-sm font-bold text-gray-800">Request Payment</p>
-                                        <p className="text-[10px] text-gray-500">Ask for milestone release</p>
-                                    </div>
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <input
-                        type="text"
-                        value={newMessage}
-                        onChange={handleInputChange}
-                        placeholder="Type a message..."
-                        className="flex-1 py-3.5 px-6 bg-gray-100 border border-transparent focus:bg-white focus:border-blue-500 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all text-gray-800"
-                    />
-                        </>
-                    )}
+            <ErrorBoundary componentName="Message Input Area">
+                <div className="p-4 bg-white border-t border-gray-200 relative">
                     
-                    {!newMessage.trim() && !attachment && !isRecording ? (
-                        <button type="button" onClick={startRecording} className="bg-gray-100 text-gray-600 p-3.5 rounded-full hover:bg-blue-100 hover:text-blue-600 transition-all flex-shrink-0 shadow-sm border border-transparent">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
-                        </button>
-                    ) : isRecording ? (
-                        <button type="button" onClick={stopRecording} className="bg-blue-600 text-white p-3.5 rounded-full hover:bg-blue-700 transition-all flex-shrink-0 shadow-md animate-bounce">
-                            <svg className="w-5 h-5 transform rotate-90 translate-x-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
-                        </button>
-                    ) : (
-                        <button type="submit" disabled={!newMessage.trim() && !attachment} className="bg-blue-600 text-white p-3.5 rounded-full hover:bg-blue-700 transition-all disabled:bg-gray-300 disabled:cursor-not-allowed flex-shrink-0 shadow-md">
-                            <svg className="w-5 h-5 transform rotate-90 translate-x-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
-                        </button>
+                    {/* Attachment Preview Banner */}
+                    {attachment && (
+                        <div className="absolute bottom-full left-4 mb-2 bg-white border border-gray-200 shadow-xl rounded-2xl p-3 flex items-center gap-3 animate-slide-up z-40 pr-4">
+                            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-2xl border border-blue-100 shadow-inner">
+                                {attachment.type?.startsWith('image/') ? '🖼️' : '📄'}
+                            </div>
+                            <div className="max-w-[200px] sm:max-w-[300px]">
+                                <p className="text-sm font-bold text-gray-800 truncate">{attachment.name}</p>
+                                <p className="text-xs text-gray-500 font-medium">Ready to send • {(attachment.size / 1024).toFixed(1)} KB</p>
+                            </div>
+                            <button onClick={() => setAttachment(null)} className="ml-auto w-8 h-8 bg-gray-100 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded-full flex items-center justify-center transition-colors font-bold shadow-sm">✕</button>
+                        </div>
                     )}
-                </form>
-            </div>
+
+                    {/* Typing Indicator */}
+                    {isTyping && (
+                        <div className="absolute -top-6 left-6 flex items-center gap-1.5 text-xs text-gray-500 font-medium bg-white/80 px-2 py-0.5 rounded-t-lg">
+                            <span className="flex gap-0.5">
+                                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span>
+                                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.15s'}}></span>
+                                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.3s'}}></span>
+                            </span>
+                            {recipientName} is typing...
+                        </div>
+                    )}
+
+                    <form onSubmit={handleSendMessage} className="flex items-center gap-3">
+                        {isRecording ? (
+                            <div className="flex-1 py-3.5 px-6 bg-red-50 border border-red-200 rounded-full flex items-center justify-between text-red-600 animate-pulse shadow-inner">
+                                <div className="flex items-center gap-2 font-bold text-sm">
+                                    <span className="w-2.5 h-2.5 bg-red-600 rounded-full shadow-[0_0_8px_rgba(220,38,38,0.8)]"></span>
+                                    Recording Audio...
+                                </div>
+                                <span className="font-mono font-bold tracking-widest">
+                                    {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                                </span>
+                                <button type="button" onClick={cancelRecording} className="text-sm font-bold hover:text-red-800 ml-4 bg-white px-3 py-1 rounded-full border border-red-100 shadow-sm transition-colors">Cancel</button>
+                            </div>
+                        ) : (
+                            <>
+                            <div className="relative" ref={actionsRef}>
+                            <button type="button" onClick={() => setShowActions(!showActions)} className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-blue-600 flex items-center justify-center transition-colors shadow-sm">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                            </button>
+                            {showActions && (
+                                <div className="absolute bottom-full left-0 mb-3 w-56 bg-white border border-gray-100 shadow-2xl rounded-2xl p-2 animate-slide-up z-50">
+                                    <label className="w-full text-left px-4 py-3 hover:bg-gray-50 rounded-xl flex items-center gap-3 transition-colors group cursor-pointer mb-1">
+                                        <div className="w-8 h-8 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">📎</div>
+                                        <div>
+                                            <p className="text-sm font-bold text-gray-800">Attach File</p>
+                                            <p className="text-[10px] text-gray-500">Images, PDFs, Docs</p>
+                                        </div>
+                                        <input type="file" className="hidden" onChange={(e) => { 
+                                            const file = e.target.files[0];
+                                            if(file) {
+                                                if (file.size > 1 * 1024 * 1024) {
+                                                    alert('For performance, attachments over websockets are limited to 1MB. (Enterprise Cloud Storage coming soon!)');
+                                                    return;
+                                                }
+                                                const reader = new FileReader();
+                                                reader.onload = (event) => {
+                                                    setAttachment({
+                                                        name: file.name, size: file.size, type: file.type,
+                                                        content: event.target.result
+                                                    });
+                                                };
+                                                reader.readAsDataURL(file);
+                                            }
+                                            setShowActions(false); 
+                                        }} />
+                                    </label>
+                                    <button type="button" onClick={() => { setShowActions(false); setIsOfferModalOpen(true); }} className="w-full text-left px-4 py-3 hover:bg-blue-50 rounded-xl flex items-center gap-3 transition-colors group">
+                                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">📄</div>
+                                        <div>
+                                            <p className="text-sm font-bold text-gray-800">Custom Offer</p>
+                                            <p className="text-[10px] text-gray-500">Send a tailored proposal</p>
+                                        </div>
+                                    </button>
+                                    <button type="button" onClick={handleStartInterview} className="w-full text-left px-4 py-3 hover:bg-purple-50 rounded-xl flex items-center gap-3 transition-colors group mt-1">
+                                        <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">📹</div>
+                                        <div>
+                                            <p className="text-sm font-bold text-gray-800">Start Interview</p>
+                                            <p className="text-[10px] text-gray-500">Secure Video Call</p>
+                                        </div>
+                                    </button>
+                                    <button type="button" onClick={() => { setShowActions(false); alert("Request Payment Feature Coming Soon!"); }} className="w-full text-left px-4 py-3 hover:bg-green-50 rounded-xl flex items-center gap-3 transition-colors group mt-1">
+                                        <div className="w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">💳</div>
+                                        <div>
+                                            <p className="text-sm font-bold text-gray-800">Request Payment</p>
+                                            <p className="text-[10px] text-gray-500">Ask for milestone release</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        <input
+                            type="text"
+                            value={newMessage}
+                            onChange={handleInputChange}
+                            placeholder="Type a message..."
+                            className="flex-1 py-3.5 px-6 bg-gray-100 border border-transparent focus:bg-white focus:border-blue-500 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all text-gray-800"
+                        />
+                            </>
+                        )}
+                        
+                        {!newMessage.trim() && !attachment && !isRecording ? (
+                            <button type="button" onClick={startRecording} className="bg-gray-100 text-gray-600 p-3.5 rounded-full hover:bg-blue-100 hover:text-blue-600 transition-all flex-shrink-0 shadow-sm border border-transparent">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                            </button>
+                        ) : isRecording ? (
+                            <button type="button" onClick={stopRecording} className="bg-blue-600 text-white p-3.5 rounded-full hover:bg-blue-700 transition-all flex-shrink-0 shadow-md animate-bounce">
+                                <svg className="w-5 h-5 transform rotate-90 translate-x-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+                            </button>
+                        ) : (
+                            <button type="submit" disabled={!newMessage.trim() && !attachment} className="bg-blue-600 text-white p-3.5 rounded-full hover:bg-blue-700 transition-all disabled:bg-gray-300 disabled:cursor-not-allowed flex-shrink-0 shadow-md">
+                                <svg className="w-5 h-5 transform rotate-90 translate-x-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+                            </button>
+                        )}
+                    </form>
+                </div>
+            </ErrorBoundary>
 
             {/* --- Custom Offer Modal --- */}
             {isOfferModalOpen && (

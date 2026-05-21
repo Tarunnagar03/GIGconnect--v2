@@ -14,10 +14,10 @@
  * - NEW: Integrated Focus Mode for deep work
  */
 
-import React, { useContext, useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext';
-import { SocketContext } from '../context/SocketContext';
+import React, { useContext, useState, useEffect, useRef, useMemo } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import api from '../api';
 
 // Custom hook to handle clicks outside of a given element
@@ -39,8 +39,8 @@ const useClickOutside = (handler) => {
 
 // Real-time Bell Component
 const NotificationBell = () => {
-    const { auth } = useContext(AuthContext);
-    const { socket } = useContext(SocketContext);
+    const { auth } = useAuth();
+    const { socket } = useSocket();
     const [notifications, setNotifications] = useState([]);
     const [isOpen, setIsOpen] = useState(false);
 
@@ -52,7 +52,8 @@ const NotificationBell = () => {
         if (!auth?.isAuthenticated) return;
         try {
             const res = await api.get('/notifications');
-            setNotifications(res.data);
+            // Bullet-proof: Ensure we only set an array, even if the API fails or sends garbage
+            setNotifications(Array.isArray(res.data) ? res.data : []);
         } catch (err) { console.error(err); }
     };
 
@@ -67,7 +68,7 @@ const NotificationBell = () => {
     useEffect(() => {
         if (!socket || !auth?.isAuthenticated) return;
         const handleNewNotif = (notif) => {
-            setNotifications(prev => [notif, ...prev]);
+            setNotifications(prev => [notif, ...(Array.isArray(prev) ? prev : [])]);
             // Optional: Play a subtle UI pop sound
             try {
                 const audio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
@@ -79,7 +80,8 @@ const NotificationBell = () => {
         return () => socket.off('newNotification', handleNewNotif);
     }, [socket, auth?.isAuthenticated]);
 
-    const unreadCount = notifications.filter(n => !n.isRead).length;
+    // Bullet-proof: Prevent crash if notifications somehow becomes undefined
+    const unreadCount = (Array.isArray(notifications) ? notifications : []).filter(n => !n.isRead).length;
 
     const handleOpen = async () => {
         setIsOpen(!isOpen);
@@ -106,8 +108,8 @@ const NotificationBell = () => {
                 <div className="absolute right-0 mt-3 w-80 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-200 p-2 overflow-hidden animate-slide-up origin-top-right">
                     <div className="px-3 py-2 border-b border-gray-100/50 font-extrabold text-sm text-gray-800 tracking-tight">Notifications</div>
                     <div className="max-h-80 overflow-y-auto mt-1 space-y-1">
-                        {notifications.length > 0 ? (
-                            notifications.map(notif => (
+                        {Array.isArray(notifications) && notifications.length > 0 ? (
+                            notifications.filter(Boolean).map(notif => (
                                 <Link 
                                     key={notif._id} 
                                     to={notif.link || '#'} 
@@ -129,17 +131,23 @@ const NotificationBell = () => {
 };
 
 const Navbar = () => {
-    const { auth, logout } = useContext(AuthContext);
+    const { auth, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [oppMenuOpen, setOppMenuOpen] = useState(false);
     const [projMenuOpen, setProjMenuOpen] = useState(false);
 
-    const { socket } = useContext(SocketContext);
+    const { socket } = useSocket();
     const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
     const [toastMsg, setToastMsg] = useState(null);
     const [pendingCount, setPendingCount] = useState(0);
+
+    // --- ENTERPRISE: FOCUS MODE LOGIC ---
+    const isFocusMode = useMemo(() => {
+        return location.pathname.includes('/gigs/') && location.search.includes('tab=workspace');
+    }, [location]);
 
     const dropdownRef = useClickOutside(() => {
         setDropdownOpen(false);
@@ -188,6 +196,44 @@ const Navbar = () => {
         return null; // Don't render if user is not loaded
     }
 
+    // --- ENTERPRISE ADMIN NAVBAR (God Mode) ---
+    if (auth.user.role === 'Admin') {
+        return (
+            <div className="bg-gradient-to-r from-gray-900 to-slate-900 border-b border-gray-800 shadow-sm sticky top-0 z-50">
+                <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
+                    <div className="flex items-center gap-8">
+                        <Link to="/admin" className="text-2xl font-extrabold tracking-tighter text-white flex items-center gap-2">
+                            GigConnect <span className="bg-red-500 text-white text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border border-red-400 ml-1 shadow-sm">Admin</span>
+                        </Link>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="relative" ref={dropdownRef}>
+                            <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center gap-3 focus:outline-none bg-gray-800 hover:bg-gray-700 p-1.5 pr-4 rounded-full transition-colors border border-gray-700 shadow-inner">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-red-500 to-orange-500 text-white flex items-center justify-center font-bold shadow-sm">
+                                    {(auth.user.name || 'A').charAt(0).toUpperCase()}
+                                </div>
+                                <div className="hidden md:block text-left">
+                                    <p className="text-xs font-bold text-white leading-tight">{auth.user.name || 'Admin User'}</p>
+                                    <p className="text-[10px] text-gray-400 font-medium leading-tight">System Control</p>
+                                </div>
+                                <svg className="w-4 h-4 text-gray-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            
+                            {dropdownOpen && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-50 animate-fade-in origin-top-right">
+                                    <button onClick={onLogout} className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                                        Log Out Securely
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </nav>
+            </div>
+        );
+    }
+
     // Update the "My Projects" link based on role
     const myProjectsLink = auth.user.role === 'Freelancer' ? '/my-projects' : '/manage-gigs';
 
@@ -204,16 +250,22 @@ const Navbar = () => {
         )}
 
         {/* --- CLASSIC CLEAN NAVBAR --- */}
-        <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
-            <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
+        <div className={`transition-all duration-300 sticky top-0 z-50 ${isFocusMode ? 'bg-gray-900 border-gray-800 text-white' : 'bg-white border-b border-gray-200 shadow-sm'}`}>
+            <nav className={`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex justify-between items-center transition-all duration-300 ${isFocusMode ? 'h-12' : 'h-16'}`}>
 
                 {/* --- LEFT SIDE: Logo & Links --- */}
                 <div className="flex items-center gap-8">
-                    <Link to="/dashboard" className="text-2xl font-extrabold tracking-tighter text-blue-600 flex items-center gap-2">
+                    <Link to="/dashboard" className={`text-2xl font-extrabold tracking-tighter flex items-center gap-2 ${isFocusMode ? 'text-white' : 'text-blue-600'}`}>
                         GigConnect
                     </Link>
 
                     {/* Desktop Navigation Links */}
+                    {isFocusMode ? (
+                        <div className="hidden md:flex items-center gap-3 ml-4 bg-gray-800 border border-gray-700 px-4 py-1.5 rounded-full shadow-inner">
+                            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span></span>
+                            <span className="text-xs font-bold text-gray-300 uppercase tracking-widest">Workspace Focus Mode</span>
+                        </div>
+                    ) : (
                     <div className="hidden md:flex items-center gap-6">
                         <Link to="/dashboard" className="text-sm font-semibold text-gray-600 hover:text-blue-600 transition-colors">Dashboard</Link>
                         
@@ -315,13 +367,14 @@ const Navbar = () => {
                             </div>
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* --- RIGHT SIDE: Notifications & Avatar --- */}
                 <div className="flex items-center gap-2 sm:gap-4">
                     
                     {/* Messages Icon */}
-                    <Link to="/inbox" onClick={() => setHasUnreadMessages(false)} className="relative p-2 text-gray-600 hover:text-blue-600 hover:bg-gray-100 transition-colors rounded-full" title="Messages">
+                    <Link to="/inbox" onClick={() => setHasUnreadMessages(false)} className={`relative p-2 transition-colors rounded-full ${isFocusMode ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'}`} title="Messages">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
                         {hasUnreadMessages && (
                             <span className="absolute top-1.5 right-1.5 bg-red-500 border-2 border-white rounded-full h-3 w-3 animate-pulse shadow-sm"></span>
@@ -347,7 +400,7 @@ const Navbar = () => {
                         {dropdownOpen && (
                             <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50 animate-fade-in origin-top-right">
                                 <div className="px-4 py-3 border-b border-gray-100">
-                                    <p className="text-sm font-bold text-gray-900 truncate">{auth.user.companyName || auth.user.name}</p>
+                                    <p className="text-sm font-bold text-gray-900 truncate">{auth.user.companyName || auth.user.name || 'User'}</p>
                                     <p className="text-xs text-gray-500 truncate">{auth.user.email}</p>
                                     <p className="text-[10px] font-bold text-blue-600 uppercase mt-1 tracking-wider">{auth.user.role}</p>
                                 </div>
@@ -355,6 +408,11 @@ const Navbar = () => {
                                     <Link to={auth.user.role === 'Freelancer' ? '/about-me' : `/client-profile/${auth.user.id}`} onClick={() => setDropdownOpen(false)} className="block px-4 py-2 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
                                         My Profile
                                     </Link>
+                                    {auth.user.role === 'Freelancer' && (
+                                        <Link to="/services" onClick={() => setDropdownOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors flex justify-between items-center">
+                                            Project Catalog <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded uppercase font-bold">New</span>
+                                        </Link>
+                                    )}
                                     <Link to="/settings" onClick={() => setDropdownOpen(false)} className="block px-4 py-2 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
                                         Settings
                                     </Link>

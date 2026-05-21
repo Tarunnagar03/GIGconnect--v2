@@ -16,6 +16,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import api from '../api';
 import GigCard from '../components/GigCard';
 import { AuthContext } from '../context/AuthContext';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 const GigSkeleton = () => (
     <div className="bg-white p-8 rounded-2xl shadow-sm animate-pulse border border-gray-100">
@@ -41,6 +42,9 @@ const BrowseGigs = () => {
     const [proposalMap, setProposalMap] = useState(new Map());
     const [error, setError] = useState(''); // Added error state
     const [mySkills, setMySkills] = useState([]);
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
 
     const [filters, setFilters] = useState({
         keyword: searchParams.get('keyword') || '',
@@ -52,14 +56,16 @@ const BrowseGigs = () => {
     // Get a string representation of searchParams to use as a stable dependency
     const searchString = searchParams.toString();
 
-    const fetchGigsAndProposals = useCallback(async () => {
+    const fetchGigsAndProposals = useCallback(async (pageNum = 1) => {
         if (!auth.isAuthenticated) {
             setError("Please log in to browse gigs and see proposal statuses.");
             setLoading(false);
             return;
         }
 
-        setLoading(true);
+        if (pageNum === 1) setLoading(true);
+        else setLoadingMore(true);
+        
         setError(''); // Clear previous errors
         try {
             const currentParams = new URLSearchParams(searchString);
@@ -67,6 +73,9 @@ const BrowseGigs = () => {
             currentParams.forEach((value, key) => {
                 if (value) params.set(key, value);
             });
+            
+            params.set('page', pageNum);
+            params.set('limit', 12);
 
             const gigsRes = await api.get(`/gigs?${params.toString()}`).catch(err => { console.error(err); return { data: [] }; });
             const proposalsRes = await api.get('/proposals/my-proposals').catch(err => { console.error(err); return { data: [] }; });
@@ -74,9 +83,16 @@ const BrowseGigs = () => {
             const profileRes = await api.get('/profiles/me').catch(() => ({ data: null }));
             setMySkills(profileRes.data?.skills || []);
 
-            // Filter out "orphaned" gigs where the client account has been deleted
-            const validGigs = Array.isArray(gigsRes.data) ? gigsRes.data.filter(gig => gig.client) : [];
-            setGigs(validGigs);
+            // Filter out "orphaned" gigs and "Archived" (Soft-Deleted) gigs by Admin
+            const validGigs = Array.isArray(gigsRes.data) ? gigsRes.data.filter(gig => gig.client && gig.status === 'Open') : [];
+            
+            setHasMore(validGigs.length >= 12);
+            
+            if (pageNum === 1) {
+                setGigs(validGigs);
+            } else {
+                setGigs(prev => [...prev, ...validGigs]);
+            }
 
             const map = new Map();
             for (const proposal of proposalsRes.data) {
@@ -93,19 +109,28 @@ const BrowseGigs = () => {
             setError(err.response?.data?.msg || "An error occurred while loading gigs.");
         } finally {
             setLoading(false);
+            setLoadingMore(false);
         }
     }, [searchString, auth.isAuthenticated]);
 
     useEffect(() => {
-        fetchGigsAndProposals();
+        setPage(1);
+        fetchGigsAndProposals(1);
     }, [fetchGigsAndProposals]);
 
     const handleFilterChange = (e) => {
         setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
     };
 
+    const handleLoadMore = () => {
+        const nextPage = page + 1;
+        setPage(nextPage);
+        fetchGigsAndProposals(nextPage);
+    };
+
     const applyFilters = (e) => {
         e.preventDefault();
+        setPage(1);
         setSearchParams(filters, { replace: true });
     };
 
@@ -137,6 +162,7 @@ const BrowseGigs = () => {
             <div className="flex flex-col lg:flex-row gap-8">
                 {/* --- LEFT SIDEBAR (FILTERS) --- */}
                 <div className="w-full lg:w-1/4">
+                    <ErrorBoundary componentName="Filters">
                     <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100 lg:sticky lg:top-28">
                         <h3 className="text-xl font-extrabold text-gray-800 mb-6 flex items-center gap-2">
                             <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
@@ -166,10 +192,12 @@ const BrowseGigs = () => {
                             </div>
                         </form>
                     </div>
+                    </ErrorBoundary>
                 </div>
 
                 {/* --- RIGHT SIDE (RESULTS) --- */}
                 <div className="w-full lg:w-3/4">
+                    <ErrorBoundary componentName="Gig Results">
                     {/* --- RESULTS HEADER --- */}
                     <div className="mb-6 flex justify-between items-center">
                         <h2 className="text-xl font-bold text-gray-800">
@@ -207,6 +235,20 @@ const BrowseGigs = () => {
                             </div>
                         )
                     )}
+
+                    {/* --- LOAD MORE BUTTON --- */}
+                    {gigs.length > 0 && hasMore && !loading && (
+                        <div className="mt-10 text-center">
+                            <button 
+                                onClick={handleLoadMore} 
+                                disabled={loadingMore}
+                                className="bg-white border border-gray-200 text-blue-600 font-bold py-3 px-8 rounded-full shadow-sm hover:shadow hover:border-blue-300 transition-all disabled:opacity-50"
+                            >
+                                {loadingMore ? 'Loading...' : 'Load More Gigs ⬇'}
+                            </button>
+                        </div>
+                    )}
+                    </ErrorBoundary>
                 </div>
             </div>
         </div>

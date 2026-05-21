@@ -32,7 +32,7 @@ const GigSchema = new mongoose.Schema({
     },
     status: { 
         type: String, 
-        enum: ['Open', 'In Progress', 'Completed', 'Cancelled'], 
+        enum: ['Open', 'In Progress', 'Completed', 'Cancelled', 'Disputed'], 
         default: 'Open' 
     },
     assignedFreelancer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -49,6 +49,8 @@ const GigSchema = new mongoose.Schema({
     date: { type: Date, default: Date.now }
 });
 
+// Enterprise Full-Text Search Index for fast querying
+GigSchema.index({ title: 'text', description: 'text' });
 GigSchema.index({ geo: '2dsphere' });
 GigSchema.index({ skills: 1, status: 1, budget: 1, date: -1 });
 

@@ -53,10 +53,22 @@ const SettingsPage = () => {
           description="Manage payment methods and tax details."
         />
         <SettingsCard 
+          to="/settings/team"
+          icon="👥"
+          title="Team & Agency"
+          description="Invite team members or manage agency roster."
+        />
+        <SettingsCard 
           to="/history"
           icon="💰"
           title="Payment History"
           description="View your transaction history."
+        />
+        <SettingsCard 
+          to="/settings/tickets"
+          icon="🎫"
+          title="My Tickets"
+          description="View and track your support requests."
         />
       </div>
     </div>

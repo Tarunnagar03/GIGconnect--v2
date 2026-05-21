@@ -40,6 +40,7 @@ const PaymentPage = () => {
                 // Check if the selected item is already paid
                 const selectedMilestoneIndex = new URLSearchParams(window.location.search).get('milestone');
                 if (selectedMilestoneIndex) {
+                    setMilestoneIndex(selectedMilestoneIndex);
                     const milestone = res.data.milestones?.[Number(selectedMilestoneIndex)];
                     if (milestone?.status === 'paid') setIsAlreadyPaid(true);
                 } else {

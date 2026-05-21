@@ -2,12 +2,17 @@ import React, { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import ClientDashboard from '../components/dashboard/ClientDashboard';
 import FreelancerDashboard from '../components/dashboard/FreelancerDashboard';
+import { Navigate } from 'react-router-dom';
 
 const Dashboard = () => {
     const { auth } = useContext(AuthContext);
 
     // Determine the role to display, default to empty string if not loaded
     const userRole = auth.user?.role || '';
+
+    if (userRole === 'Admin') {
+        return <Navigate to="/admin" replace />;
+    }
 
     return (
         <div className="max-w-6xl mx-auto">
