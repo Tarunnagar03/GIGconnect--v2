@@ -1,17 +1,40 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { useSocket } from '../context/SocketContext';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import api from '../api';
 import { moderateHtmlText, checkMessageViolations } from '../utils/moderationEngine';
 import ErrorBoundary from '../components/ErrorBoundary';
+import DOMPurify from 'dompurify';
 
-const renderMessageText = (text) => <span dangerouslySetInnerHTML={{ __html: moderateHtmlText(text) }} />;
+const renderMessageText = (text) => <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(moderateHtmlText(text)) }} />;
+
+// PERFORMANCE FIX: Custom hook with stable event listeners to prevent memory leaks
+const useClickOutside = (handler) => {
+    const domNode = useRef();
+    const handlerRef = useRef(handler);
+
+    useEffect(() => {
+        handlerRef.current = handler;
+    }, [handler]);
+
+    useEffect(() => {
+        const maybeHandler = (event) => {
+            if (domNode.current && !domNode.current.contains(event.target)) {
+                handlerRef.current(event);
+            }
+        };
+        document.addEventListener('mousedown', maybeHandler);
+        return () => document.removeEventListener('mousedown', maybeHandler);
+    }, []); // Empty dependency array ensures it only attaches once
+
+    return domNode;
+};
 
 const ChatPage = () => {
     const { recipientId } = useParams();
     const { socket } = useSocket();
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const location = useLocation();
     const serviceQuery = new URLSearchParams(location.search).get('service');
     const greetingQuery = new URLSearchParams(location.search).get('greeting');
@@ -29,23 +52,15 @@ const ChatPage = () => {
     const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
     const [offerDetails, setOfferDetails] = useState({ amount: '', time: '', description: '' });
     const [loading, setLoading] = useState(true);
+    const [openMessageMenu, setOpenMessageMenu] = useState(null);
     const messagesEndRef = useRef(null);
     const typingTimeoutRef = useRef(null);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
     const recordingIntervalRef = useRef(null);
-    const actionsRef = useRef(null);
-
-    // Close actions menu when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (actionsRef.current && !actionsRef.current.contains(event.target)) {
-                setShowActions(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    
+    // FIX: Using the robust useClickOutside hook
+    const actionsRef = useClickOutside(() => setShowActions(false));
 
     // This effect handles auto-scrolling to the latest message
     useEffect(() => {
@@ -64,12 +79,13 @@ const ChatPage = () => {
     // This single, robust useEffect handles all setup for the chat room
     useEffect(() => {
         // Wait until all necessary data is available
-        if (!auth.user || !recipientId || !socket) {
+        const currentUserId = auth?.user?.id || auth?.user?._id;
+        if (!currentUserId || !recipientId || !socket) {
             return;
         }
 
         // 1. Create a consistent, unique room name for the two users
-        const sortedIds = [auth.user.id, recipientId].sort();
+        const sortedIds = [currentUserId, recipientId].sort();
         const newRoomName = sortedIds.join('-');
         setRoomName(newRoomName);
         
@@ -79,7 +95,7 @@ const ChatPage = () => {
         // 3. Set up the event listener for incoming messages
         const onReceiveMessage = (messageData) => {
             if (String(messageData.senderId) === String(recipientId)) {
-                socket.emit('markAsRead', { roomName: newRoomName, userId: auth.user.id });
+                socket.emit('markAsRead', { roomName: newRoomName, userId: currentUserId });
             }
             setMessages(prevMessages => [...prevMessages, messageData]);
         };
@@ -94,13 +110,19 @@ const ChatPage = () => {
         // 3.6 Listen for Read Receipts (Blue Ticks)
         const onMessagesRead = ({ byUserId }) => {
             if (String(byUserId) === String(recipientId)) {
-                setMessages(prev => prev.map(m => String(m.senderId || m.sender?._id || m.sender) === String(auth.user.id) ? { ...m, status: 'read' } : m));
+                setMessages(prev => prev.map(m => String(m.senderId || m.sender?._id || m.sender) === String(currentUserId) ? { ...m, status: 'read' } : m));
             }
         };
         socket.on('messagesRead', onMessagesRead);
         
+        // 3.7 Listen for Deleted Messages
+        const onMessageDeleted = ({ messageId }) => {
+            setMessages(prev => prev.map(m => String(m._id) === String(messageId) ? { ...m, text: '[DELETED]' } : m));
+        };
+        socket.on('messageDeleted', onMessageDeleted);
+
         // Notify other user that we opened the chat and read the messages
-        socket.emit('markAsRead', { roomName: newRoomName, userId: auth.user.id });
+        socket.emit('markAsRead', { roomName: newRoomName, userId: currentUserId });
 
         // 4. Fetch the chat history and the other user's name
         const fetchData = async () => {
@@ -125,12 +147,15 @@ const ChatPage = () => {
             socket.off('typing', onTyping);
             socket.off('stopTyping', onStopTyping);
             socket.off('messagesRead', onMessagesRead);
+            socket.off('messageDeleted', onMessageDeleted);
         };
 
     }, [auth.user, recipientId, socket]); // This hook re-runs if the user or chat partner changes
 
     const handleSendMessage = (e) => {
         e.preventDefault();
+
+        const currentUserId = auth?.user?.id || auth?.user?._id;
 
         const violation = checkMessageViolations(newMessage);
         if (violation.action === 'BLOCK') {
@@ -145,7 +170,7 @@ const ChatPage = () => {
             if (attachment) {
                 const attachString = `[ATTACHMENT]:::${JSON.stringify(attachment)}`;
                 const messageDataAttach = {
-                    senderId: auth.user.id, senderName: auth.user.name,
+                    senderId: currentUserId, senderName: auth.user.name,
                     text: attachString, timestamp: new Date().toISOString(),
                     status: 'delivered'
                 };
@@ -155,7 +180,7 @@ const ChatPage = () => {
             // 2. Send text message if it exists
             if (newMessage.trim()) {
                 const messageDataText = {
-                    senderId: auth.user.id, senderName: auth.user.name,
+                    senderId: currentUserId, senderName: auth.user.name,
                     text: newMessage, timestamp: new Date().toISOString(),
                     status: 'delivered'
                 };
@@ -164,23 +189,25 @@ const ChatPage = () => {
 
             setNewMessage('');
             setAttachment(null);
-            socket.emit('stopTyping', { roomName, senderId: auth.user.id });
+            socket.emit('stopTyping', { roomName, senderId: currentUserId });
         }
     };
     
     const handleInputChange = (e) => {
         setNewMessage(e.target.value);
+        const currentUserId = auth?.user?.id || auth?.user?._id;
         if (socket && roomName) {
-            socket.emit('typing', { roomName, senderId: auth.user.id });
+            socket.emit('typing', { roomName, senderId: currentUserId });
             clearTimeout(typingTimeoutRef.current);
             typingTimeoutRef.current = setTimeout(() => {
-                socket.emit('stopTyping', { roomName, senderId: auth.user.id });
+                socket.emit('stopTyping', { roomName, senderId: currentUserId });
             }, 2000);
         }
     };
 
     // --- VOICE RECORDING ENGINE ---
     const startRecording = async () => {
+        const currentUserId = auth?.user?.id || auth?.user?._id;
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorderRef.current = new MediaRecorder(stream);
@@ -194,7 +221,7 @@ const ChatPage = () => {
                     const audioString = `[AUDIO]:::${JSON.stringify({ content: reader.result })}`;
                     socket.emit('sendMessage', {
                         roomName,
-                        messageData: { senderId: auth.user.id, senderName: auth.user.name, text: audioString, timestamp: new Date().toISOString(), status: 'delivered' }
+                        messageData: { senderId: currentUserId, senderName: auth.user.name, text: audioString, timestamp: new Date().toISOString(), status: 'delivered' }
                     });
                 };
                 stream.getTracks().forEach(track => track.stop());
@@ -225,10 +252,11 @@ const ChatPage = () => {
 
     const handleSendOffer = (e) => {
         e.preventDefault();
+        const currentUserId = auth?.user?.id || auth?.user?._id;
         if (offerDetails.amount && offerDetails.time && roomName && socket) {
             const offerString = `[CUSTOM_OFFER]:::${JSON.stringify(offerDetails)}`;
             const messageData = {
-                senderId: auth.user.id,
+                senderId: currentUserId,
                 senderName: auth.user.name,
                 text: offerString,
                 timestamp: new Date().toISOString()
@@ -241,36 +269,50 @@ const ChatPage = () => {
 
     const handleStartInterview = () => {
         setShowActions(false);
+        const currentUserId = auth?.user?.id || auth?.user?._id;
         const meetingLink = `https://meet.jit.si/GigConnect-${roomName}-${Date.now()}`;
         const meetingData = { link: meetingLink, title: 'Video Interview' };
         const meetString = `[MEETING]:::${JSON.stringify(meetingData)}`;
         const messageData = {
-            senderId: auth.user.id, senderName: auth.user.name,
+            senderId: currentUserId, senderName: auth.user.name,
             text: meetString, timestamp: new Date().toISOString(), status: 'delivered'
         };
         socket.emit('sendMessage', { roomName, messageData });
+    };
+
+    const handleDeleteMessage = (messageId) => {
+        if (window.confirm('Are you sure you want to delete this message for everyone?')) {
+            socket.emit('deleteMessage', { roomName, messageId });
+        }
     };
 
     if (loading) {
         return <div className="text-center mt-20">Loading Chat...</div>;
     }
 
+    const displayRecipientName = recipientRole === 'Admin' ? 'GigConnect Support' : recipientName;
+
     return (
-        <div className="flex flex-col h-[85vh] max-w-4xl mx-auto border border-gray-200 rounded-3xl shadow-2xl bg-gray-50 overflow-hidden animate-fade-in">
+        <div className={`flex flex-col ${auth?.user?.role === 'Admin' ? 'h-full w-full max-w-5xl' : 'h-[85vh] max-w-4xl'} mx-auto border border-gray-200 rounded-3xl shadow-2xl bg-gray-50 overflow-hidden animate-fade-in`}>
+            {/* --- Invisible Backdrop to close message menu when clicking outside --- */}
+            {openMessageMenu && (
+                <div className="fixed inset-0 z-40" onClick={() => setOpenMessageMenu(null)}></div>
+            )}
+
             {/* Clean White Sticky Header */}
             <ErrorBoundary componentName="Chat Header">
                 <div className="bg-white/95 backdrop-blur-md p-4 border-b border-gray-200 flex items-center gap-4 sticky top-0 z-10 shadow-sm">
-                    <Link to="/inbox" className="p-2 -ml-2 text-gray-500 hover:text-gray-800 transition-colors rounded-full hover:bg-gray-100">
+                    <Link to={auth?.user?.role === 'Admin' ? '/admin?tab=users' : '/inbox'} className="p-2 -ml-2 text-gray-500 hover:text-gray-800 transition-colors rounded-full hover:bg-gray-100">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                     </Link>
                     <div className="flex items-center gap-3">
                         <Link to={recipientRole === 'Client' ? `/client-profile/${recipientId}` : `/profile/${recipientId}`} className="flex items-center gap-3 group" title="View Profile">
                             <div className="w-11 h-11 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm group-hover:scale-105 transition-transform">
-                                {(recipientName || 'U').charAt(0).toUpperCase()}
+                                {recipientRole === 'Admin' ? '🛡️' : (displayRecipientName || 'U').charAt(0).toUpperCase()}
                             </div>
                             <div>
-                                <h1 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{recipientName}</h1>
-                                {recipientRole && <p className="text-xs text-gray-500 font-medium leading-none mt-0.5">{recipientRole}</p>}
+                                <h1 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{displayRecipientName}</h1>
+                                {recipientRole && <p className="text-xs text-gray-500 font-medium leading-none mt-0.5">{recipientRole === 'Admin' ? 'Official Support' : recipientRole}</p>}
                             </div>
                         </Link>
                     </div>
@@ -290,9 +332,13 @@ const ChatPage = () => {
                     )}
                     {(Array.isArray(messages) ? messages : []).map((msg, index) => {
                         // FIX: Robust check for Sender ID whether from Live Socket or Database
+                const currentUserId = auth?.user?.id || auth?.user?._id;
                         const msgSenderId = msg.senderId || (msg.sender?._id || msg.sender);
-                        const isMe = String(msgSenderId) === String(auth.user?.id);
-                        const senderDisplayName = msg.senderName || (isMe ? auth.user?.name : recipientName);
+                const isMe = String(msgSenderId) === String(currentUserId);
+                        
+                        let senderDisplayName = msg.senderName || (isMe ? auth.user?.name : displayRecipientName);
+                        if (isMe && auth?.user?.role === 'Admin') senderDisplayName = 'GigConnect Support';
+                        if (!isMe && recipientRole === 'Admin') senderDisplayName = 'GigConnect Support';
 
                         let isCustomOffer = false;
                         let offerData = null;
@@ -304,6 +350,7 @@ const ChatPage = () => {
                         let audioData = null;
                         let isMeeting = false;
                         let meetingData = null;
+                        let isDeleted = msg.text === '[DELETED]';
 
                         if (typeof msg.text === 'string' && msg.text.startsWith('[CUSTOM_OFFER]:::')) {
                             isCustomOffer = true;
@@ -336,8 +383,9 @@ const ChatPage = () => {
                         }
 
                         return (
-                        <div key={index} className={`mb-4 flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                            <div className={`max-w-[85%] lg:max-w-md ${(isCustomOffer || isOfferAccepted || isAttachment || isAudio || isMeeting) ? '' : 'px-5 py-3'} rounded-3xl shadow-sm ${(!isCustomOffer && !isOfferAccepted && !isAttachment && !isAudio && !isMeeting) ? (isMe ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-sm') : ''}`}>
+                        <div key={index} className={`mb-4 flex flex-col ${isMe ? 'items-end' : 'items-start'} group/msg`}>
+                            <div className={`flex items-center gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} max-w-full`}>
+                                <div className={`max-w-[85%] lg:max-w-md ${(isCustomOffer || isOfferAccepted || isAttachment || isAudio || isMeeting) ? '' : 'px-5 py-3'} rounded-3xl shadow-sm ${(!isCustomOffer && !isOfferAccepted && !isAttachment && !isAudio && !isMeeting) ? (isMe ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-sm') : ''}`}>
                                 {isCustomOffer && offerData ? (
                                     <div className={`w-full sm:w-80 border ${isMe ? 'border-blue-200 bg-blue-50 text-gray-800' : 'border-gray-200 bg-white text-gray-800'} rounded-2xl p-5 shadow-md`}>
                                         <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-200/60">
@@ -362,7 +410,7 @@ const ChatPage = () => {
                                             <button onClick={() => {
                                                 if (window.confirm(`Accept this offer for ₹${offerData.amount}?`)) {
                                                     const acceptText = `[OFFER_ACCEPTED]:::${JSON.stringify(offerData)}`;
-                                                    const messageData = { senderId: auth.user.id, senderName: auth.user.name, text: acceptText, timestamp: new Date().toISOString() };
+                                        const messageData = { senderId: currentUserId, senderName: auth.user.name, text: acceptText, timestamp: new Date().toISOString() };
                                                     socket.emit('sendMessage', { roomName, messageData });
                                                 }
                                             }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md hover:shadow-lg text-sm">Accept Offer</button>
@@ -424,8 +472,35 @@ const ChatPage = () => {
                                         </div>
                                         <a href={meetingData.link} target="_blank" rel="noopener noreferrer" className="w-full block text-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition-all shadow-md hover:shadow-lg text-sm">Join Video Call</a>
                                     </div>
+                            ) : isDeleted ? (
+                                <div className={`flex items-center gap-2 italic text-[13px] ${isMe ? 'text-blue-200' : 'text-gray-400'}`}>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
+                                    This message was deleted
+                                </div>
                                 ) : (
                                     <p className="text-[15px] leading-relaxed">{renderMessageText(msg.text)}</p>
+                                )}
+                                </div>
+                            {isMe && msg._id && !isDeleted && (
+                                <div className="relative z-50">
+                                    <button onClick={() => setOpenMessageMenu(prev => prev === msg._id ? null : msg._id)} className="opacity-0 group-hover/msg:opacity-100 text-gray-400 hover:text-gray-700 transition-opacity p-2 shrink-0 focus:outline-none" title="Message Options">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                                    </button>
+                                    {openMessageMenu === msg._id && (
+                                        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-100 shadow-xl rounded-xl w-44 animate-slide-up overflow-hidden">
+                                            <button 
+                                                onClick={() => {
+                                                    setOpenMessageMenu(null);
+                                                    handleDeleteMessage(msg._id);
+                                                }} 
+                                                className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-bold transition-colors flex items-center gap-2"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                Delete for everyone
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                                 )}
                             </div>
                             <div className={`flex items-center gap-1 mt-1 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>

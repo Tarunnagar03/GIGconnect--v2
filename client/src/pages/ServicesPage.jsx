@@ -1,31 +1,33 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { getServiceTheme, getRelatedSkills } from '../utils/serviceHelpers';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const ServicesPage = () => {
-    const [profile, setProfile] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
+    const queryClient = useQueryClient();
     
+    // --- ENHANCED: React Query for robust caching and data management ---
+    const { data: profile, isLoading: isProfileLoading } = useQuery({
+        queryKey: ['freelancerProfile', auth.user?.id],
+        queryFn: async () => {
+            const res = await api.get('/profiles/me');
+            return res.data;
+        },
+        enabled: auth.user?.role === 'Freelancer',
+        retry: false
+    });
+
+    const loading = auth.user?.role === 'Freelancer' ? isProfileLoading : false;
+
     // --- NEW: Package Builder State ---
     const [isPackageModalOpen, setIsPackageModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [newPackage, setNewPackage] = useState({
         type: 'package', title: '', price: '', deliveryTime: '', description: ''
     });
-
-    useEffect(() => {
-        if (auth.user?.role === 'Freelancer') {
-            api.get('/profiles/me')
-                .then(res => setProfile(res.data))
-                .catch(err => console.error("No profile found", err))
-                .finally(() => setLoading(false));
-        } else {
-            setLoading(false); // No profile to load for clients
-        }
-    }, [auth.user]);
 
     // --- NEW: Save Package Logic ---
     const handleSavePackage = async (e) => {
@@ -40,7 +42,10 @@ const ServicesPage = () => {
                 services: updatedServices
             };
             await api.post('/profiles', payload);
-            setProfile(payload); // Optimistic UI update
+            
+            // --- ENHANCED: Optimistic UI update via Query Cache ---
+            queryClient.setQueryData(['freelancerProfile', auth.user?.id], payload);
+            
             setIsPackageModalOpen(false);
             setNewPackage({ type: 'package', title: '', price: '', deliveryTime: '', description: '' });
         } catch (err) {
@@ -59,7 +64,9 @@ const ServicesPage = () => {
                 services: updatedServices
             };
             await api.post('/profiles', payload);
-            setProfile(payload);
+            
+            // --- ENHANCED: Optimistic UI update via Query Cache ---
+            queryClient.setQueryData(['freelancerProfile', auth.user?.id], payload);
         } catch (err) { alert("Failed to delete."); }
     };
 

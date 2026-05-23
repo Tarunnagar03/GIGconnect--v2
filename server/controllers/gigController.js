@@ -14,39 +14,13 @@
 
 // server/controllers/gigController.js
 const Gig = require('../models/Gig');
-
-function normalizeStringArray(value) {
-    if (!value) return undefined;
-    if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean);
-    if (typeof value === 'string') return value.split(',').map(v => v.trim()).filter(Boolean);
-    return undefined;
-}
+const gigService = require('../services/gigService');
+const jwt = require('jsonwebtoken');
 
 // Create a new gig
 exports.createGig = async (req, res) => {
-    const { title, description, budget, skills, locationText, geo, milestones } = req.body;
     try {
-        const gigPayload = { title, description, budget, client: req.user.id, locationText };
-
-        const skillsArr = normalizeStringArray(skills);
-        if (skillsArr) gigPayload.skills = skillsArr;
-
-        if (geo && typeof geo === 'object') {
-            const lng = Array.isArray(geo.coordinates) ? Number(geo.coordinates[0]) : undefined;
-            const lat = Array.isArray(geo.coordinates) ? Number(geo.coordinates[1]) : undefined;
-            if (Number.isFinite(lng) && Number.isFinite(lat)) {
-                gigPayload.geo = { type: 'Point', coordinates: [lng, lat] };
-            }
-        }
-
-        if (Array.isArray(milestones) && milestones.length) {
-            gigPayload.milestones = milestones
-                .filter(m => m && m.title && Number(m.amount) > 0)
-                .map(m => ({ title: String(m.title), amount: Number(m.amount) }));
-        }
-
-        const newGig = new Gig(gigPayload);
-        const gig = await newGig.save();
+        const gig = await gigService.createGig(req.user.id, req.body);
         res.json(gig);
     } catch (err) {
         console.error(err.message);
@@ -65,56 +39,30 @@ exports.getMyGigs = async (req, res) => {
     }
 };
 
-// --- THIS FUNCTION IS CORRECTED ---
 // Get all gigs with filtering (Filters for 'Open' status)
 exports.getAllGigs = async (req, res) => {
     try {
-        const { keyword, minPrice, maxPrice, skills, lng, lat, radiusKm } = req.query;
-        let query = {
-            status: { $ne: 'Archived' } // Hide archived gigs by default
-        };
-        const andConditions = [];
+        const { keyword, minPrice, maxPrice, skills, lng, lat, radiusKm, recommendations } = req.query;
 
-        if (keyword) {
-            andConditions.push({
-                $or: [
-                    { title: { $regex: keyword, $options: 'i' } },
-                    { description: { $regex: keyword, $options: 'i' } }
-                ]
-            });
-        }
-        if (minPrice) {
-            andConditions.push({ budget: { $gte: Number(minPrice) } });
-        }
-        if (maxPrice) {
-            andConditions.push({ budget: { $lte: Number(maxPrice) } });
+        if (recommendations === 'true') {
+            let userId = req.user?.id;
+            // Fallback to manual JWT decode if route isn't strictly authenticated
+            if (!userId && req.headers && req.headers.authorization) {
+                try {
+                    const token = req.headers.authorization.split(' ')[1];
+                    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                    userId = decoded.user.id;
+                } catch (e) {}
+            }
+
+            if (userId) {
+                const recommendedGigs = await gigService.getRecommendedGigs(userId);
+                return res.json(recommendedGigs);
+            }
         }
 
-        const skillsArr = normalizeStringArray(skills);
-        if (skillsArr?.length) {
-            andConditions.push({ skills: { $in: skillsArr } });
-        }
-
-        const hasGeo = Number.isFinite(Number(lng)) && Number.isFinite(Number(lat)) && Number.isFinite(Number(radiusKm));
-        if (hasGeo) {
-            andConditions.push({
-                geo: {
-                    $near: {
-                        $geometry: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
-                        $maxDistance: Number(radiusKm) * 1000
-                    }
-                }
-            });
-        }
-
-        // --- ENSURE THIS FILTER IS PRESENT ---
-        andConditions.push({ status: 'Open' }); // Only find gigs that are Open for public browsing
-
-        query = { $and: andConditions };
-
-        const gigs = await Gig.find(query)
-                             .populate('client', ['name'])
-                             .sort({ date: -1 });
+        // Hand off to the Service Layer
+        const gigs = await gigService.searchOpenGigs(req.query);
         res.json(gigs);
     } catch (err) {
         console.error(err.message);
@@ -140,55 +88,36 @@ exports.getGigById = async (req, res) => {
 // Assign a freelancer to a gig
 exports.assignFreelancer = async (req, res) => {
     try {
-        const gig = await Gig.findById(req.params.gigId);
-        if (!gig) return res.status(404).json({ msg: 'Gig not found' });
-        if (gig.client.toString() !== req.user.id) return res.status(401).json({ msg: 'User not authorized' });
-        if (gig.status !== 'Open') return res.status(400).json({ msg: 'Gig is not open for assignment' });
-
-        const updatedGig = await Gig.findByIdAndUpdate(gig._id, {
-            $set: { assignedFreelancer: req.body.freelancerId, status: 'In Progress' }
-        }, { new: true }).populate('assignedFreelancer', 'name username');
-        
+        const updatedGig = await gigService.assignFreelancer(req.user.id, req.params.gigId, req.body.freelancerId);
         res.json(updatedGig);
     } catch (err) {
         console.error(err.message);
         res.status(500).send('Server Error');
+        res.status(err.status || 500).json({ msg: err.message || 'Server Error' });
     }
 };
 
 // Mark a gig as complete
 exports.completeGig = async (req, res) => {
     try {
-        const gig = await Gig.findById(req.params.gigId);
-        if (!gig) return res.status(404).json({ msg: 'Gig not found' });
-        if (gig.client.toString() !== req.user.id) return res.status(401).json({ msg: 'User not authorized' });
-        if (gig.status !== 'In Progress') return res.status(400).json({ msg: 'Gig must be In Progress to be completed' });
-
-        const updatedGig = await Gig.findByIdAndUpdate(gig._id, {
-            $set: { status: 'Completed' }
-        }, { new: true });
+        const updatedGig = await gigService.completeGig(req.user.id, req.params.gigId);
         res.json(updatedGig);
     } catch (err) {
         console.error("Complete Gig error:", err);
         res.status(500).json({ msg: err.message || 'Server Error' });
+        res.status(err.status || 500).json({ msg: err.message || 'Server Error' });
     }
 };
 
 // Revert a completed gig back to In Progress
 exports.revertCompleteGig = async (req, res) => {
     try {
-        const gig = await Gig.findById(req.params.gigId);
-        if (!gig) return res.status(404).json({ msg: 'Gig not found' });
-        if (gig.client.toString() !== req.user.id) return res.status(401).json({ msg: 'User not authorized' });
-        if (gig.status !== 'Completed') return res.status(400).json({ msg: 'Gig is not in Completed status' });
-
-        const updatedGig = await Gig.findByIdAndUpdate(gig._id, {
-            $set: { status: 'In Progress' }
-        }, { new: true });
+        const updatedGig = await gigService.revertCompleteGig(req.user.id, req.params.gigId);
         res.json(updatedGig);
     } catch (err) {
         console.error("Revert Gig error:", err);
         res.status(500).json({ msg: err.message || 'Server Error' });
+        res.status(err.status || 500).json({ msg: err.message || 'Server Error' });
     }
 };
 
@@ -219,6 +148,50 @@ exports.getPublicGigs = async (req, res) => {
         res.json(gigs);
     } catch (err) {
         console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+};
+
+// Submit a deliverable to a workspace
+exports.submitDeliverable = async (req, res) => {
+    try {
+        const gig = await Gig.findById(req.params.gigId);
+        if (!gig) return res.status(404).json({ msg: 'Gig not found' });
+        if (gig.assignedFreelancer.toString() !== req.user.id) return res.status(401).json({ msg: 'User not authorized' });
+        
+        const newDeliverable = {
+            text: req.body.text,
+            fileName: req.body.fileName,
+            fileData: req.body.fileData,
+            status: 'Pending Review',
+            submittedAt: new Date()
+        };
+
+        gig.deliverables.unshift(newDeliverable);
+        await gig.save();
+
+        res.json(gig.deliverables);
+    } catch (err) {
+        res.status(500).send('Server Error');
+    }
+};
+
+// Update deliverable status (Approve / Reject)
+exports.updateDeliverableStatus = async (req, res) => {
+    try {
+        const gig = await Gig.findById(req.params.gigId);
+        if (!gig) return res.status(404).json({ msg: 'Gig not found' });
+        if (gig.client.toString() !== req.user.id) return res.status(401).json({ msg: 'User not authorized' });
+
+        const deliverable = gig.deliverables.id(req.params.deliverableId);
+        if (!deliverable) return res.status(404).json({ msg: 'Deliverable not found' });
+
+        deliverable.status = req.body.status;
+        if (req.body.feedback) deliverable.feedback = req.body.feedback;
+
+        await gig.save();
+        res.json(gig.deliverables);
+    } catch (err) {
         res.status(500).send('Server Error');
     }
 };

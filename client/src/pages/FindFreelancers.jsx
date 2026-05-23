@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
+import { useQuery } from '@tanstack/react-query';
 
 const FreelancerCardSkeleton = () => (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-pulse flex flex-col h-full">
@@ -32,37 +33,24 @@ const FindFreelancers = () => {
     minRating: searchParams.get('minRating') || '',
     sort: searchParams.get('sort') || 'rating_desc'
   });
-  const [profiles, setProfiles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   // Use string representation for stable dependency to prevent infinite loops
   const searchString = searchParams.toString();
 
-  const fetchProfiles = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const currentParams = new URLSearchParams(searchString);
-      const params = new URLSearchParams();
-      currentParams.forEach((value, key) => { if (value) params.set(key, value); });
-
-
-      const res = await api.get(`/profiles/search?${params.toString()}`);
-      const freelancersOnly = Array.isArray(res.data) 
-          ? res.data.filter(p => p.user?.role === 'Freelancer') 
-          : [];
-      setProfiles(freelancersOnly);
-    } catch (err) {
-      setError(err.response?.data?.msg || 'Failed to load freelancers.');
-    } finally {
-      setLoading(false);
-    }
-  }, [searchString]);
-
-  useEffect(() => {
-    fetchProfiles();
-  }, [fetchProfiles]);
+  const { data: profiles = [], isLoading: loading, error: queryError } = useQuery({
+      queryKey: ['freelancersSearch', searchString],
+      queryFn: async () => {
+          const currentParams = new URLSearchParams(searchString);
+          const params = new URLSearchParams();
+          currentParams.forEach((value, key) => { if (value) params.set(key, value); });
+          const res = await api.get(`/profiles/search?${params.toString()}`);
+          return Array.isArray(res.data) 
+              ? res.data.filter(p => p.user?.role === 'Freelancer') 
+              : [];
+      }
+  });
+  
+  const error = queryError ? (queryError.response?.data?.msg || 'Failed to load freelancers.') : '';
 
   const onChange = (e) => setFilters((p) => ({ ...p, [e.target.name]: e.target.value }));
   const onSubmit = (e) => {
@@ -109,7 +97,7 @@ const FindFreelancers = () => {
               <div className="lg:col-span-2">
                   <label className="block text-sm font-bold text-gray-700 mb-2">Minimum Rating</label>
                   <div className="relative">
-                      <select name="minRating" value={filters.minRating} onChange={onChange} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white appearance-none cursor-pointer">
+                      <select name="minRating" value={filters.minRating} onChange={(e) => { onChange(e); setSearchParams({ ...filters, [e.target.name]: e.target.value }, { replace: true }); }} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white appearance-none cursor-pointer">
                           <option value="">Any Rating</option>
                           <option value="4">4 Stars & Up</option>
                           <option value="3">3 Stars & Up</option>
@@ -124,7 +112,7 @@ const FindFreelancers = () => {
               <div className="lg:col-span-2">
                   <label className="block text-sm font-bold text-gray-700 mb-2">Sort By</label>
                   <div className="relative">
-                      <select name="sort" value={filters.sort} onChange={(e) => { onChange(e); setTimeout(() => document.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })), 0) }} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white appearance-none cursor-pointer">
+                      <select name="sort" value={filters.sort} onChange={(e) => { onChange(e); setSearchParams({ ...filters, [e.target.name]: e.target.value }, { replace: true }); }} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white appearance-none cursor-pointer">
                           <option value="rating_desc">Top Rated</option>
                           <option value="rate_asc">Rate: Low to High</option>
                           <option value="rate_desc">Rate: High to Low</option>

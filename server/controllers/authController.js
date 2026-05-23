@@ -4,13 +4,26 @@ const jwt = require('jsonwebtoken');
 const sendEmail = require('../utils/email');
 const crypto = require('crypto'); // Import the built-in crypto module
 
+const getAuditMeta = (req) => ({
+    lastIpAddress: req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.socket?.remoteAddress || 'Unknown',
+    lastUserAgent: req.headers['user-agent'] || 'Unknown',
+    lastLogin: Date.now()
+});
+
 // Helper function to generate a 6-digit code
-const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+const generateCode = () => crypto.randomInt(100000, 1000000).toString();
 
 // Safe fallback for JWT Secret during development
 const JWT_SECRET = process.env.JWT_SECRET || 'gigconnect_default_secret_123';
 
-// --- (Your existing registerUser, loginUser, verifyLogin2FA functions) ---
+// Helper configuration for cookies
+const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 3600000 // 1 hour
+};
+
 exports.registerUser = async (req, res) => {
     const { name, username, email, password, role, dob, country, state, city, phone, companyName, headline } = req.body;
     try {
@@ -20,12 +33,14 @@ exports.registerUser = async (req, res) => {
         let userByUsername = await User.findOne({ username: username.toLowerCase() });
         if (userByUsername) return res.status(400).json({ msg: 'Username is already taken' });
 
-        user = new User({
+        const meta = getAuditMeta(req);
+        const user = new User({
             name,
             username: username.toLowerCase(),
             email: email.toLowerCase(),
             password,
-            role, dob, country, state, city, phone, companyName, headline
+            role, dob, country, state, city, phone, companyName, headline,
+            lastIpAddress: meta.lastIpAddress, lastUserAgent: meta.lastUserAgent, lastLogin: meta.lastLogin
         });
         
         const salt = await bcrypt.genSalt(10);
@@ -46,7 +61,7 @@ exports.registerUser = async (req, res) => {
                 console.error("JWT Error:", err);
                 return res.status(500).json({ msg: 'Error generating token' });
             }
-            res.json({ token });
+            res.cookie('token', token, cookieOptions).json({ token });
         });
     } catch (err) {
         console.error(err.message);
@@ -65,6 +80,16 @@ exports.loginUser = async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ msg: 'Invalid credentials' });
 
+        // --- NEW: Check if user account is active (not banned) ---
+        if (user.isActive === false) {
+            return res.status(403).json({ msg: 'Your account has been suspended. Please contact support to regain access.' });
+        }
+
+        const meta = getAuditMeta(req);
+        user.lastIpAddress = meta.lastIpAddress;
+        user.lastUserAgent = meta.lastUserAgent;
+        user.lastLogin = meta.lastLogin;
+
         if (user.twoFactorEnabled) {
             const code = generateCode();
             user.oneTimeCode = code;
@@ -76,6 +101,8 @@ exports.loginUser = async (req, res) => {
             
             return res.json({ twoFactorRequired: true, userId: user.id });
         }
+
+        await user.save();
 
         const payload = { 
             user: { 
@@ -90,7 +117,7 @@ exports.loginUser = async (req, res) => {
                 console.error("JWT Error:", err);
                 return res.status(500).json({ msg: 'Error generating token' });
             }
-            res.json({ token });
+            res.cookie('token', token, cookieOptions).json({ token });
         });
     } catch (err) {
         console.error(err.message);
@@ -122,12 +149,18 @@ exports.verifyLogin2FA = async (req, res) => {
                 console.error("JWT Error:", err);
                 return res.status(500).json({ msg: 'Error generating token' });
             }
-            res.json({ token: finalToken });
+            res.cookie('token', finalToken, cookieOptions).json({ token: finalToken });
         });
     } catch (err) {
         console.error(err.message);
         res.status(500).json({ msg: 'Server error: ' + err.message });
     }
+};
+
+// --- FUNCTION: Logout user ---
+exports.logout = (req, res) => {
+    res.clearCookie('token');
+    res.status(200).json({ msg: 'Logged out successfully' });
 };
 
 // --- NEW FUNCTION: Forgot Password (Send OTP) ---

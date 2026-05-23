@@ -1,33 +1,28 @@
 const User = require('../models/User');
 const Gig = require('../models/Gig');
+const Transaction = require('../models/Transaction');
+const Contact = require('../models/Contact');
+const AuditLog = require('../models/AuditLog');
+const Message = require('../models/Message');
+const sendEmail = require('../utils/email');
 
-// 🛡️ SAFE IMPORTS: Prevents server crash if models don't exist yet
-let Transaction;
-try { Transaction = require('../models/Transaction'); } catch(e) { console.warn("Transaction model missing"); }
-let Contact;
-try { Contact = require('../models/Contact'); } catch(e) { console.warn("Contact model missing"); }
-let AuditLog;
-try { AuditLog = require('../models/AuditLog'); } catch(e) { console.warn("AuditLog model missing"); }
-
-// Nodemailer for sending system emails
-let nodemailer;
-try { nodemailer = require('nodemailer'); } catch(e) { console.warn("Nodemailer not installed"); }
-
-// Safe import for Message model (for disputes)
-let Message;
-try { Message = require('../models/Message'); } catch(e) { console.warn("Message model missing"); }
-
-// 🚀 SECURITY FIX: Helper to prevent Regular Expression Denial of Service (ReDoS) and NoSQL Injection
+//  SECURITY FIX: Helper to prevent Regular Expression Denial of Service (ReDoS) and NoSQL Injection
 const escapeRegex = (string) => {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
+
+// 🚀 ENTERPRISE SECURITY: Helper to capture Network & Device Info
+const getAuditMeta = (req) => ({
+    ipAddress: req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.socket?.remoteAddress || 'Unknown',
+    userAgent: req.headers['user-agent'] || 'Unknown'
+});
 
 exports.getOverview = async (req, res) => {
   try {
     const [users, gigs, transactions] = await Promise.all([
       User.countDocuments({}),
       Gig.countDocuments({}),
-      Transaction ? Transaction.countDocuments({}) : Promise.resolve(0)
+      Transaction.countDocuments({})
     ]);
 
     const openGigs = await Gig.countDocuments({ status: 'Open' });
@@ -52,20 +47,8 @@ exports.sendUserEmail = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ msg: 'User not found' });
 
-    if (!nodemailer) return res.status(500).json({ msg: 'Nodemailer is not installed on the server.' });
-
-    // Configure Nodemailer (Best practice: use environment variables)
-    const transporter = nodemailer.createTransport({
-      service: 'gmail', 
-      auth: {
-        user: process.env.EMAIL_USER || 'nagartarun011@gmail.com',
-        pass: process.env.EMAIL_PASS || 'dfcoeecpdgtuhadq'
-      }
-    });
-
-    const mailOptions = {
-      from: `"GigConnect Trust & Safety" <${process.env.EMAIL_USER || 'nagartarun011@gmail.com'}>`,
-      to: user.email,
+    await sendEmail({
+      email: user.email,
       subject: subject,
       html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
                 <h2 style="color: #4F46E5; margin-bottom: 20px;">GigConnect Official Notice</h2>
@@ -74,10 +57,9 @@ exports.sendUserEmail = async (req, res) => {
                 <br/>
                 <p style="color: #6B7280; font-size: 14px;">Regards,<br/><strong>Trust & Safety Team</strong><br/>GigConnect Platform</p>
              </div>`
-    };
-
-    await transporter.sendMail(mailOptions);
-    if (AuditLog) await new AuditLog({ adminId: req.user.id, action: 'Sent System Email', targetId: user._id, targetModel: 'User', details: `Subject: ${subject}` }).save();
+    });
+    const auditMeta = getAuditMeta(req);
+    await new AuditLog({ adminId: req.user.id, action: 'Sent System Email', targetId: user._id, targetModel: 'User', details: `Subject: ${subject}`, ...auditMeta }).save();
 
     res.json({ msg: 'Email sent successfully' });
   } catch (err) {
@@ -89,7 +71,6 @@ exports.sendUserEmail = async (req, res) => {
 // Get all Contact Us messages for Admin Dashboard
 exports.listContacts = async (req, res) => {
   try {
-    if (!Contact) return res.json([]);
     const contacts = await Contact.find({}).sort({ createdAt: -1 });
     res.json(contacts);
   } catch (err) {
@@ -101,7 +82,6 @@ exports.listContacts = async (req, res) => {
 // Delete Contact Message
 exports.deleteContact = async (req, res) => {
   try {
-    if (!Contact) return res.status(404).json({ msg: 'Model missing' });
     await Contact.findByIdAndDelete(req.params.id);
     res.json({ msg: 'Contact deleted' });
   } catch (err) {
@@ -111,7 +91,9 @@ exports.deleteContact = async (req, res) => {
 
 exports.listUsers = async (req, res) => {
   try {
-    const { q, role, isActive, limit = 50 } = req.query;
+    const { q, role, isActive, limit = 50, page = 1 } = req.query;
+    const limitNum = Math.min(Number(limit) || 50, 200);
+    const pageNum = Math.max(1, Number(page) || 1);
     const and = [];
     if (q && typeof q === 'string') {
       const safeQ = escapeRegex(q);
@@ -131,7 +113,8 @@ exports.listUsers = async (req, res) => {
     const users = await User.find(query)
       .select('-password')
       .sort({ date: -1 })
-      .limit(Math.min(Number(limit) || 50, 200));
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
 
     res.json(users);
   } catch (err) {
@@ -148,6 +131,13 @@ exports.setUserActive = async (req, res) => {
     // 🚀 BUG FIX: Boolean('false') evaluates to true in JS. We must explicitly check.
     const activeStatus = isActive === true || String(isActive).toLowerCase() === 'true';
 
+    // 🛡️ SECURITY: Prevent banning Admins (Self-lockout prevention)
+    const targetUser = await User.findById(userId);
+    if (!targetUser) return res.status(404).json({ msg: 'User not found' });
+    if (targetUser.role === 'Admin') {
+        return res.status(403).json({ msg: 'Security Alert: Administrator accounts cannot be banned or deactivated.' });
+    }
+
     const user = await User.findByIdAndUpdate(
       userId,
       { $set: { isActive: activeStatus } },
@@ -155,7 +145,8 @@ exports.setUserActive = async (req, res) => {
     ).select('-password');
 
     // 🛡️ SECURITY: Log this action
-    if (AuditLog) await new AuditLog({ adminId: req.user.id, action: activeStatus ? 'Reactivated User' : 'Deactivated/Banned User', targetId: user._id, targetModel: 'User', details: `User: ${user.email}` }).save();
+    const auditMeta = getAuditMeta(req);
+    await new AuditLog({ adminId: req.user.id, action: activeStatus ? 'Reactivated User' : 'Deactivated/Banned User', targetId: user._id, targetModel: 'User', details: `User: ${user.email}`, ...auditMeta }).save();
 
     if (!user) return res.status(404).json({ msg: 'User not found' });
     res.json(user);
@@ -167,7 +158,9 @@ exports.setUserActive = async (req, res) => {
 
 exports.listGigs = async (req, res) => {
   try {
-    const { status, q, limit = 50 } = req.query;
+    const { status, q, limit = 50, page = 1 } = req.query;
+    const limitNum = Math.min(Number(limit) || 50, 200);
+    const pageNum = Math.max(1, Number(page) || 1);
     const and = [];
     if (status && typeof status === 'string') and.push({ status });
     if (q && typeof q === 'string') {
@@ -184,7 +177,8 @@ exports.listGigs = async (req, res) => {
       .populate('client', ['name', 'username'])
       .populate('assignedFreelancer', ['name', 'username'])
       .sort({ date: -1 })
-      .limit(Math.min(Number(limit) || 50, 200));
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
     res.json(gigs);
   } catch (err) {
     console.error(err.message);
@@ -201,7 +195,8 @@ exports.archiveGig = async (req, res) => {
     await gig.save();
 
     // 🛡️ SECURITY: Log this action
-    if (AuditLog) await new AuditLog({ adminId: req.user.id, action: 'Archived Gig', targetId: gig._id, targetModel: 'Gig', details: `Gig Title: ${gig.title}` }).save();
+    const auditMeta = getAuditMeta(req);
+    await new AuditLog({ adminId: req.user.id, action: 'Archived Gig', targetId: gig._id, targetModel: 'Gig', details: `Gig Title: ${gig.title}`, ...auditMeta }).save();
 
     res.json(gig);
   } catch (err) {
@@ -216,7 +211,6 @@ exports.archiveGig = async (req, res) => {
 // --- ENTERPRISE DISPUTE & AUDIT LOGS ---
 exports.getAuditLogs = async (req, res) => {
   try {
-    if (!AuditLog) return res.json([]);
     const logs = await AuditLog.find().populate('adminId', 'name email').sort({ createdAt: -1 }).limit(100);
     res.json(logs);
   } catch (err) { res.status(500).json({ msg: 'Server Error' }); }
@@ -225,7 +219,8 @@ exports.getAuditLogs = async (req, res) => {
 exports.markDisputed = async (req, res) => {
   try {
     const gig = await Gig.findByIdAndUpdate(req.params.gigId, { status: 'Disputed' }, { new: true }).populate('client').populate('assignedFreelancer');
-    if (AuditLog) await new AuditLog({ adminId: req.user.id, action: 'Froze Gig (Dispute)', targetId: gig._id, targetModel: 'Gig' }).save();
+    const auditMeta = getAuditMeta(req);
+    await new AuditLog({ adminId: req.user.id, action: 'Froze Gig (Dispute)', targetId: gig._id, targetModel: 'Gig', ...auditMeta }).save();
     res.json(gig);
   } catch (err) { res.status(500).json({ msg: 'Server Error' }); }
 };
@@ -237,10 +232,17 @@ exports.resolveDispute = async (req, res) => {
     if (!gig) return res.status(404).json({msg: 'Gig not found'});
     
     gig.status = resolution === 'refund_client' ? 'Cancelled' : 'Completed';
-    if (resolution === 'release_funds') gig.paymentStatus = 'paid_out';
+    if (resolution === 'release_funds') {
+        gig.paymentStatus = 'paid_out';
+        // 🚨 CRITICAL FIX: Transfer funds to freelancer wallet (minus 10% platform fee)
+        if (gig.assignedFreelancer && gig.budget) {
+            await User.findByIdAndUpdate(gig.assignedFreelancer, { $inc: { walletBalance: gig.budget * 0.9 } });
+        }
+    }
     
     await gig.save();
-    if (AuditLog) await new AuditLog({ adminId: req.user.id, action: `Resolved Dispute: ${resolution}`, targetId: gig._id, targetModel: 'Gig', details: `Action taken: ${resolution}` }).save();
+    const auditMeta = getAuditMeta(req);
+    await new AuditLog({ adminId: req.user.id, action: `Resolved Dispute: ${resolution}`, targetId: gig._id, targetModel: 'Gig', details: `Action taken: ${resolution}`, ...auditMeta }).save();
     res.json(gig);
   } catch(err) { res.status(500).json({ msg: 'Server Error' }); }
 };
@@ -251,9 +253,9 @@ exports.getDisputeDetails = async (req, res) => {
     if (!gig) return res.status(404).json({ msg: 'Gig not found' });
     
     let messages = [];
-    if (gig.client && gig.assignedFreelancer && Message) {
+    if (gig.client && gig.assignedFreelancer) {
       const roomName = [String(gig.client._id), String(gig.assignedFreelancer._id)].sort().join('-');
-      messages = await Message.find({ roomName }).sort({ timestamp: 1 });
+      messages = await Message.find({ conversationId: roomName }).sort({ createdAt: 1 });
     }
     res.json({ gig, messages });
   } catch (err) { res.status(500).json({ msg: 'Server Error' }); }
@@ -261,13 +263,15 @@ exports.getDisputeDetails = async (req, res) => {
 
 exports.listTransactions = async (req, res) => {
   try {
-    if (!Transaction) return res.json([]);
-    const { limit = 50 } = req.query;
+    const { limit = 50, page = 1 } = req.query;
+    const limitNum = Math.min(Number(limit) || 50, 200);
+    const pageNum = Math.max(1, Number(page) || 1);
     const tx = await Transaction.find({})
       .populate('user', ['name', 'username', 'email'])
       .populate('gig', ['title'])
       .sort({ createdAt: -1 })
-      .limit(Math.min(Number(limit) || 50, 200));
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
     res.json(tx);
   } catch (err) {
     console.error(err.message);

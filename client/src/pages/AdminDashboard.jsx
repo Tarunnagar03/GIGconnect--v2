@@ -1,78 +1,16 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation, Outlet, useOutlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
 
 // --- NEW: Import Global Error Boundary ---
 import ErrorBoundary from '../components/ErrorBoundary';
-
-// --- NEW: Enterprise Analytics Charts ---
-import { Chart as ChartJS, registerables } from 'chart.js';
-
-ChartJS.register(...registerables);
-
-// --- NATIVE CHART WRAPPERS (Bypasses react-chartjs-2 hooks bug) ---
-const NativeChart = ({ type, data, options }) => {
-    const canvasRef = useRef(null);
-    const chartRef = useRef(null);
-    useEffect(() => {
-        if (chartRef.current) chartRef.current.destroy();
-        chartRef.current = new ChartJS(canvasRef.current, { type, data, options });
-        return () => { if (chartRef.current) chartRef.current.destroy(); };
-    }, [type, data, options]);
-    return <canvas ref={canvasRef}></canvas>;
-};
-
-// Helper to generate realistic looking chart data based on current totals
-const generateTrendData = (total, months = 6) => {
-    const safeTotal = Number(total) || 0;
-    const data = [];
-    for(let i=1; i<=months; i++) data.push(Math.floor(safeTotal * (i/months)));
-    return data;
-};
-
-// --- Chart Constants (Moved outside to prevent re-render memory leaks) ---
-const getDynamicChartLabels = () => {
-    const labels = [];
-    for (let i = 5; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(1); // Set to 1st to avoid month overflow bugs (like Feb 30th)
-        d.setMonth(new Date().getMonth() - i);
-        labels.push(d.toLocaleString('en-US', { month: 'short' }));
-    }
-    return labels;
-};
-
-const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-        intersect: false,
-        mode: 'index',
-    },
-    plugins: {
-        legend: { display: false }, // Hiding default boring legend
-        tooltip: {
-            backgroundColor: '#0B101E', // Dark sleek tooltip
-            titleFont: { size: 13 },
-            bodyFont: { size: 14, weight: 'bold' },
-            padding: 12,
-            cornerRadius: 8,
-            displayColors: false,
-        }
-    },
-    scales: {
-        y: { 
-            beginAtZero: true,
-            grid: { color: 'rgba(0, 0, 0, 0.04)', drawBorder: false }, // Soft grid lines
-            ticks: { color: '#9CA3AF', font: { size: 11 }, padding: 10 }
-        },
-        x: { 
-            grid: { display: false, drawBorder: false },
-            ticks: { color: '#9CA3AF', font: { size: 11 }, padding: 10 }
-        }
-    }
-};
+import AnalyticsCharts from './AnalyticsCharts';
+import SystemEmailModal from './SystemEmailModal';
+import AdminUserTable from './AdminUserTable';
+import ArchiveGigModal from './ArchiveGigModal';
+import ContactDeleteModal from './ContactDeleteModal';
+import DisputeResolutionModal from './DisputeResolutionModal';
 
 // --- NEW: Bullet-proof Date Formatters to prevent RangeError Crashes ---
 const safeFormatDate = (dateString) => {
@@ -95,6 +33,26 @@ const safeFormatDateSimple = (dateString) => {
     }
 };
 
+// --- NEW: Smart User Agent Parser (Converts ugly strings to "Chrome / Windows") ---
+const parseUserAgent = (ua) => {
+    if (!ua || ua === 'Unknown') return 'N/A';
+    let browser = 'Unknown Browser';
+    let os = 'Unknown OS';
+    
+    if (ua.includes('Edg')) browser = 'Edge';
+    else if (ua.includes('Chrome')) browser = 'Chrome';
+    else if (ua.includes('Firefox')) browser = 'Firefox';
+    else if (ua.includes('Safari')) browser = 'Safari';
+    
+    if (ua.includes('Win')) os = 'Windows';
+    else if (ua.includes('Mac')) os = 'MacOS';
+    else if (ua.includes('Linux')) os = 'Linux';
+    else if (ua.includes('Android')) os = 'Android';
+    else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+    
+    return `${browser} on ${os}`;
+};
+
 const SectionCard = ({ title, children, action, className = "" }) => (
     <div className={`bg-white/70 backdrop-blur-xl p-8 rounded-3xl shadow-sm border border-gray-200/50 ${className}`}>
         <div className="flex justify-between items-center mb-6 border-b border-gray-200/60 pb-4">
@@ -106,6 +64,9 @@ const SectionCard = ({ title, children, action, className = "" }) => (
 );
 
 const AdminDashboard = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const outlet = useOutlet();
   const { logout } = useAuth();
   const [overview, setOverview] = useState(null);
   const [users, setUsers] = useState([]);
@@ -135,13 +96,19 @@ const AdminDashboard = () => {
 
   // --- NEW: Email Modal States ---
   const [emailModalUser, setEmailModalUser] = useState(null);
-  const [emailSubject, setEmailSubject] = useState('Account Notice: Action Required');
-  const [emailMessage, setEmailMessage] = useState('');
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
-  const [activeTab, setActiveTab] = useState('overview');
+  const queryTab = new URLSearchParams(location.search).get('tab');
+  const [activeTab, setActiveTab] = useState(queryTab || 'overview');
 
-  const chartLabels = useMemo(() => getDynamicChartLabels(), []);
+  useEffect(() => {
+      if (queryTab) {
+          setActiveTab(queryTab);
+      } else if (location.pathname.includes('/gigs/')) {
+          setActiveTab('gigs');
+      } else if (location.pathname.includes('/chat/')) {
+          setActiveTab('users');
+      }
+  }, [queryTab, location.pathname]);
 
   useEffect(() => {
     const load = async () => {
@@ -234,24 +201,6 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleSendEmail = async (e) => {
-    e.preventDefault();
-    setIsSendingEmail(true);
-    try {
-      await api.post(`/admin/users/${emailModalUser._id}/send-email`, {
-        subject: emailSubject,
-        message: emailMessage
-      });
-      alert('Email sent successfully to ' + emailModalUser.email);
-      setEmailModalUser(null);
-      setEmailMessage('');
-    } catch (err) {
-      alert(err.response?.data?.msg || 'Failed to send email.');
-    } finally {
-      setIsSendingEmail(false);
-    }
-  };
-
   const searchUsers = async (e) => {
     if (e) e.preventDefault();
     setUserPage(1);
@@ -298,38 +247,6 @@ const AdminDashboard = () => {
       setLoadingMore(false);
   };
 
-  const safeTransactions = overview?.totals?.transactions || 0;
-  const safeUsers = overview?.totals?.users || 0;
-
-  const revenueData = {
-    labels: chartLabels,
-    datasets: [{
-        label: 'Platform Transactions (₹)',
-        data: generateTrendData(safeTransactions * 5000, 6),
-        borderColor: 'rgb(79, 70, 229)', // Indigo 600
-        backgroundColor: 'rgba(79, 70, 229, 0.15)',
-        fill: true,
-        tension: 0.4, // Smooth curved enterprise lines
-        borderWidth: 3,
-        pointBackgroundColor: '#ffffff',
-        pointBorderColor: 'rgb(79, 70, 229)',
-        pointBorderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 6, // Interactive hover dots
-    }]
-  };
-
-  const userGrowthData = {
-    labels: chartLabels,
-    datasets: [{
-        label: 'New Users Registered',
-        data: generateTrendData(safeUsers, 6).map(val => Math.floor(val * (Math.random() * 0.5 + 0.5))),
-        backgroundColor: 'rgba(16, 185, 129, 0.8)', // Emerald 500
-        borderRadius: 8, // Rounded bars
-        barPercentage: 0.4, // Sleek, thin bars
-    }]
-  };
-
   return (
     <div className="h-screen w-screen bg-[#F4F7FC] flex overflow-hidden font-sans selection:bg-indigo-200">
         {/* --- DYNAMIC BACKGROUND AMBIENT ORBS --- */}
@@ -362,7 +279,10 @@ const AdminDashboard = () => {
                     ].map(tab => (
                         <button 
                             key={tab.id} 
-                            onClick={() => setActiveTab(tab.id)} 
+                            onClick={() => {
+                                setActiveTab(tab.id);
+                                navigate(`/admin?tab=${tab.id}`);
+                            }} 
                             className={`w-full text-left px-6 py-4 font-bold text-sm transition-all duration-300 relative group outline-none overflow-hidden rounded-xl mb-1 ${activeTab === tab.id ? 'text-white bg-white/5' : 'text-slate-400 hover:text-white'}`}
                         >
                             {/* Premium Gradient Hover */}
@@ -389,7 +309,9 @@ const AdminDashboard = () => {
                 {/* --- PERSISTENT STICKY HEADER --- */}
                 <header className="h-20 shrink-0 bg-white/60 backdrop-blur-xl border-b border-gray-200/60 flex justify-between items-center px-8 lg:px-12 sticky top-0 z-30 shadow-[0_4px_30px_rgba(0,0,0,0.02)]">
                     <h1 className="text-lg font-black text-slate-800 uppercase tracking-widest">
-                        {[ { id: 'overview', label: 'Platform Overview' }, { id: 'users', label: 'User Directory' }, { id: 'gigs', label: 'Project Escrows' }, { id: 'transactions', label: 'Financial Ledger' }, { id: 'support', label: 'Support Operations' }, { id: 'audit', label: 'Audit & Security Logs' } ].find(t => t.id === activeTab)?.label || 'Dashboard'}
+                        {outlet ? (location.pathname.includes('/gigs/') ? 'Gig Details' : location.pathname.includes('/chat/') ? 'Live Support Chat' : 'Admin View') : (
+                            [ { id: 'overview', label: 'Platform Overview' }, { id: 'users', label: 'User Directory' }, { id: 'gigs', label: 'Project Escrows' }, { id: 'transactions', label: 'Financial Ledger' }, { id: 'support', label: 'Support Operations' }, { id: 'audit', label: 'Audit & Security Logs' } ].find(t => t.id === activeTab)?.label || 'Dashboard'
+                        )}
                     </h1>
                     <div className="flex items-center gap-6">
                         <div className="hidden sm:flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100 shadow-sm">
@@ -404,20 +326,26 @@ const AdminDashboard = () => {
                 </header>
 
                 {/* --- FULL SCREEN SCROLLABLE CONTENT --- */}
-                <main className="flex-1 overflow-y-auto p-8 lg:p-12 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
+                <main className={`flex-1 ${location.pathname.includes('/chat/') ? 'overflow-hidden p-4 lg:p-6' : 'overflow-y-auto p-8 lg:p-12'} [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400`}>
                     
-                    {error && (
-                        <div className="bg-red-50/80 backdrop-blur-md border border-red-200 text-red-700 px-6 py-4 rounded-3xl mb-8 font-bold shadow-lg text-center animate-slide-up" role="alert">
-                        {error}
-                        </div>
-                    )}
-
-                    {loading ? (
-                        <div className="flex justify-center items-center h-full">
-                            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-indigo-600 shadow-lg"></div>
-                        </div>
+                    {outlet ? (
+                        <ErrorBoundary componentName="Admin Nested View">
+                            <Outlet />
+                        </ErrorBoundary>
                     ) : (
-                        <div className="max-w-[1400px] mx-auto animate-fade-in pb-12">
+                        <>
+                            {error && (
+                                <div className="bg-red-50/80 backdrop-blur-md border border-red-200 text-red-700 px-6 py-4 rounded-3xl mb-8 font-bold shadow-lg text-center animate-slide-up" role="alert">
+                                {error}
+                                </div>
+                            )}
+
+                            {loading ? (
+                                <div className="flex justify-center items-center h-full">
+                                    <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-indigo-600 shadow-lg"></div>
+                                </div>
+                            ) : (
+                                <div className="max-w-[1400px] mx-auto animate-fade-in pb-12">
                             
                             {/* ======================= TAB: OVERVIEW ======================= */}
                             {activeTab === 'overview' && overview && (
@@ -451,20 +379,7 @@ const AdminDashboard = () => {
                                     </ErrorBoundary>
 
                                     {/* Analytics Charts */}
-                                    <ErrorBoundary componentName="Analytics Charts">
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                            <SectionCard title="Revenue Trends">
-                                                <div className="h-72 w-full relative">
-                                                    {overview ? <NativeChart type="line" data={revenueData} options={chartOptions} /> : <div className="h-full w-full bg-gray-50 animate-pulse rounded-xl"></div>}
-                                                </div>
-                                            </SectionCard>
-                                            <SectionCard title="User Growth">
-                                                <div className="h-72 w-full relative">
-                                                    {overview ? <NativeChart type="bar" data={userGrowthData} options={chartOptions} /> : <div className="h-full w-full bg-gray-50 animate-pulse rounded-xl"></div>}
-                                                </div>
-                                            </SectionCard>
-                                        </div>
-                                    </ErrorBoundary>
+                                    <AnalyticsCharts overview={overview} />
 
                                     {/* --- NEW: TOP PERFORMERS LEADERBOARD --- */}
                                     <ErrorBoundary componentName="Top Performers">
@@ -519,50 +434,13 @@ const AdminDashboard = () => {
 
                             {/* ======================= TAB: USERS ======================= */}
                             {activeTab === 'users' && (
-                                <div className="space-y-10 animate-fade-in">
-                                    <ErrorBoundary componentName="Users List">
-                                        <SectionCard title="All Platform Users">
-                                            <form onSubmit={searchUsers} className="flex items-center gap-3 mb-6 bg-white p-2 rounded-2xl border border-gray-200 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition-all">
-                                                <input value={userQuery} onChange={(e) => setUserQuery(e.target.value)} className="flex-1 bg-transparent border-none focus:ring-0 px-4 py-2.5 text-gray-800 font-medium outline-none" placeholder="Search name, email, or username..." />
-                                                <button type="submit" className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-colors font-bold shadow-md flex items-center gap-2">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg> Search
-                                                </button>
-                                            </form>
-                                            <div className="space-y-3">
-                                                {users.map((u) => (
-                                                    <div key={u._id} className="p-5 flex items-center justify-between gap-4 bg-white border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all rounded-2xl group/row">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="w-12 h-12 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-black text-xl flex-shrink-0 shadow-md">{String(u?.name || 'U').charAt(0).toUpperCase()}</div>
-                                                            <div>
-                                                                <p className="font-black text-gray-900 text-lg tracking-tight group-hover/row:text-indigo-600 transition-colors">{u.name || 'Unknown User'} <span className="text-sm text-gray-400 font-bold">(@{u.username || 'unknown'})</span></p>
-                                                                <p className="text-sm text-gray-500 font-medium">{u.email}</p>
-                                                                <div className="flex items-center gap-2 mt-2">
-                                                                    <span className="bg-gray-100 border border-gray-200 text-gray-600 text-[10px] px-2.5 py-1 rounded uppercase tracking-widest font-black">{u.role || 'User'}</span>
-                                                                    <span className={`text-[10px] px-2.5 py-1 rounded uppercase tracking-widest font-black border ${u.isActive !== false ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{u.isActive !== false ? 'Active' : 'Inactive'}</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        {u.role !== 'Admin' && (
-                                                            <div className="flex gap-2 shrink-0">
-                                                                <button onClick={() => toggleUserActive(u._id, !(u.isActive !== false))} className={`text-xs px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm ${u.isActive !== false ? 'bg-white border-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300' : 'bg-green-600 text-white hover:bg-green-700 border-2 border-transparent'}`}>
-                                                                    {u.isActive === false ? 'Activate' : 'Deactivate'}
-                                                                </button>
-                                                                <button onClick={() => setEmailModalUser(u)} className="text-xs px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm bg-white border-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300">
-                                                                    Email ✉️
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            {hasMoreUsers && (
-                                                <div className="mt-6 text-center">
-                                                    <button onClick={loadMoreUsers} disabled={loadingMore} className="text-xs uppercase tracking-widest font-black text-indigo-600 hover:bg-indigo-50 py-3 px-6 rounded-xl transition-colors border-2 border-transparent hover:border-indigo-100">{loadingMore ? 'Loading...' : 'Load More Users'}</button>
-                                                </div>
-                                            )}
-                                        </SectionCard>
-                                    </ErrorBoundary>
-                                </div>
+                                <AdminUserTable 
+                                    users={users} 
+                                    userQuery={userQuery} setUserQuery={setUserQuery} searchUsers={searchUsers} 
+                                    hasMoreUsers={hasMoreUsers} loadingMore={loadingMore} loadMoreUsers={loadMoreUsers} 
+                                    toggleUserActive={toggleUserActive} setEmailModalUser={setEmailModalUser} 
+                                    startChat={(userId) => navigate(`/admin/chat/${userId}`)}
+                                />
                             )}
 
                             {/* ======================= TAB: GIGS ======================= */}
@@ -580,7 +458,7 @@ const AdminDashboard = () => {
                                                 {gigs.map((g) => (
                                                     <div key={g._id} className="p-5 flex items-start justify-between gap-4 bg-white border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all rounded-2xl group/row">
                                                         <div className="flex-1">
-                                                            <Link to={`/gigs/${g._id}`} className="font-black text-xl text-gray-900 group-hover/row:text-indigo-600 transition-colors line-clamp-1 tracking-tight">{g.title || 'Untitled Gig'}</Link>
+                                                            <Link to={`/admin/gigs/${g._id}`} className="font-black text-xl text-gray-900 group-hover/row:text-indigo-600 transition-colors line-clamp-1 tracking-tight">{g.title || 'Untitled Gig'}</Link>
                                                             <div className="flex flex-wrap items-center gap-2 mt-3 mb-3">
                                                                 <span className="bg-gray-100 border border-gray-200 text-gray-600 text-[10px] px-2.5 py-1 rounded uppercase tracking-widest font-black">{g.status || 'Unknown'}</span>
                                                                 <span className="bg-green-50 text-green-700 text-[10px] px-2.5 py-1 rounded uppercase tracking-widest font-black border border-green-200">₹{g.budget || 0}</span>
@@ -696,7 +574,7 @@ const AdminDashboard = () => {
                                             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                                                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                                                     <thead className="bg-gray-50 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
-                                                        <tr><th className="px-6 py-4 text-left">Timestamp</th><th className="px-6 py-4 text-left">Admin Executed</th><th className="px-6 py-4 text-left">Action Taken</th><th className="px-6 py-4 text-left">Details</th></tr>
+                                                        <tr><th className="px-6 py-4 text-left">Timestamp</th><th className="px-6 py-4 text-left">Admin Executed</th><th className="px-6 py-4 text-left">Action Taken</th><th className="px-6 py-4 text-left">IP Address</th><th className="px-6 py-4 text-left">Device (User Agent)</th><th className="px-6 py-4 text-left">Details</th></tr>
                                                     </thead>
                                                     <tbody className="bg-white divide-y divide-gray-100">
                                                         {auditLogs.map(log => (
@@ -704,10 +582,21 @@ const AdminDashboard = () => {
                                                                 <td className="px-6 py-4 whitespace-nowrap text-gray-500 font-medium">{safeFormatDate(log.createdAt)}</td>
                                                                 <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-900">{log.adminId?.name || 'System Admin'}</td>
                                                                 <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2.5 py-1 rounded-md text-[10px] uppercase tracking-wider font-black ${log.action.includes('Dispute') || log.action.includes('Ban') || log.action.includes('Archived') ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>{log.action}</span></td>
+                                                                <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 font-mono">
+                                                                    {log.ipAddress === '::1' || log.ipAddress === '127.0.0.1' ? 'Localhost' : (log.ipAddress || 'N/A')}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-xs font-bold text-gray-600 relative group cursor-pointer">
+                                                                    <span className="block max-w-[150px] truncate">{parseUserAgent(log.userAgent)}</span>
+                                                                    {/* Premium Custom Tooltip */}
+                                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-max max-w-xs bg-gray-900 text-white text-[10px] font-medium leading-relaxed px-3 py-2 rounded-lg shadow-xl z-50 whitespace-normal pointer-events-none animate-slide-up">
+                                                                        {log.userAgent || 'N/A'}
+                                                                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                                                    </div>
+                                                                </td>
                                                                 <td className="px-6 py-4 text-gray-600">{log.details || '-'}</td>
                                                             </tr>
                                                         ))}
-                                                        {auditLogs.length === 0 && <tr><td colSpan="4" className="text-center py-8 text-gray-400 font-bold">No audit logs found.</td></tr>}
+                                                        {auditLogs.length === 0 && <tr><td colSpan="6" className="text-center py-8 text-gray-400 font-bold">No audit logs found.</td></tr>}
                                                     </tbody>
                                                 </table>
                                             </div>
@@ -716,148 +605,23 @@ const AdminDashboard = () => {
                                 </div>
                             )}
                         </div>
+                            )}
+                        </>
                     )}
                 </main>
             </div>
 
             {/* --- ENTERPRISE ARCHIVE MODAL --- */}
-            {gigToArchive && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-up border border-gray-100">
-                        <div className="p-8 text-center">
-                            <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-red-100">
-                                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                            </div>
-                            <h3 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Archive Project?</h3>
-                            <p className="text-gray-500 font-medium mb-1">
-                                Are you sure you want to deactivate <br/><span className="text-gray-800 font-bold">"{gigToArchive.title}"</span>?
-                            </p>
-                            <p className="text-xs text-red-600 font-bold bg-red-50/80 p-3 rounded-xl mt-6 border border-red-100">
-                                This project will be hidden from all Freelancer and Client portals immediately.
-                            </p>
-                        </div>
-                        <div className="p-5 bg-gray-50 border-t border-gray-100 flex gap-3">
-                            <button onClick={() => setGigToArchive(null)} disabled={isArchiving} className="flex-1 bg-white border border-gray-200 text-gray-700 font-bold py-3.5 rounded-xl hover:bg-gray-100 transition-colors shadow-sm disabled:opacity-50 outline-none">
-                                Cancel
-                            </button>
-                            <button onClick={confirmArchiveGig} disabled={isArchiving} className="flex-1 bg-red-600 text-white font-bold py-3.5 rounded-xl hover:bg-red-700 transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 outline-none">
-                                {isArchiving ? <><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span> Archiving...</> : 'Yes, Deactivate'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ArchiveGigModal gigToArchive={gigToArchive} isArchiving={isArchiving} setGigToArchive={setGigToArchive} confirmArchiveGig={confirmArchiveGig} />
 
             {/* --- NEW: Enterprise Contact Delete MODAL --- */}
-            {contactToDelete && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-up border border-gray-100">
-                        <div className="p-8 text-center">
-                            <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-red-100">
-                                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </div>
-                            <h3 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Delete Message?</h3>
-                            <p className="text-gray-500 font-medium mb-1">
-                                Permanently delete the message from <br/><span className="text-gray-800 font-bold">"{contactToDelete.name}"</span>?
-                            </p>
-                            <p className="text-xs text-red-600 font-bold bg-red-50/80 p-3 rounded-xl mt-6 border border-red-100">
-                                This action is irreversible.
-                            </p>
-                        </div>
-                        <div className="p-5 bg-gray-50 border-t border-gray-100 flex gap-3">
-                            <button onClick={() => setContactToDelete(null)} className="flex-1 bg-white border border-gray-200 text-gray-700 font-bold py-3.5 rounded-xl hover:bg-gray-100 transition-colors shadow-sm outline-none">Cancel</button>
-                            <button onClick={async () => { await api.delete(`/admin/contacts/${contactToDelete._id}`); setContacts(p => p.filter(c => c._id !== contactToDelete._id)); setContactToDelete(null); }} className="flex-1 bg-red-600 text-white font-bold py-3.5 rounded-xl hover:bg-red-700 transition-all shadow-md outline-none">Yes, Delete</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ContactDeleteModal contactToDelete={contactToDelete} setContactToDelete={setContactToDelete} setContacts={setContacts} />
 
             {/* --- DISPUTE RESOLUTION CENTER MODAL --- */}
-            {disputeGig && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden animate-slide-up border border-gray-100">
-                        <div className="p-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
-                            <h2 className="text-xl font-black text-orange-600 flex items-center gap-2"><span className="text-2xl">⚖️</span> Dispute Resolution Center</h2>
-                            <button onClick={() => setDisputeGig(null)} className="text-gray-400 hover:text-red-500 font-bold bg-white px-3 py-1.5 rounded-lg shadow-sm border border-gray-200">Close</button>
-                        </div>
-                        
-                        <div className="flex-1 flex overflow-hidden">
-                            {/* Left: Contract/Gig Details */}
-                            <div className="w-1/3 bg-gray-50/50 border-r border-gray-200 p-6 overflow-y-auto">
-                                <h3 className="font-bold text-gray-400 uppercase tracking-widest text-[10px] mb-2">Disputed Project</h3>
-                                <p className="text-lg font-black text-gray-900 mb-6">{disputeDetails?.gig?.title || disputeGig.title}</p>
-                                
-                                <h3 className="font-bold text-gray-400 uppercase tracking-widest text-[10px] mb-2">Escrow Value</h3>
-                                <p className="text-3xl font-black text-green-600 mb-6">₹{disputeDetails?.gig?.budget || disputeGig.budget}</p>
-
-                                <div className="space-y-4">
-                                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm"><p className="text-[10px] uppercase font-bold text-gray-400 mb-1">Client (Buyer)</p><p className="font-bold text-blue-600">{disputeDetails?.gig?.client?.name || 'Loading...'}</p><p className="text-xs text-gray-500">{disputeDetails?.gig?.client?.email}</p></div>
-                                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm"><p className="text-[10px] uppercase font-bold text-gray-400 mb-1">Freelancer (Seller)</p><p className="font-bold text-purple-600">{disputeDetails?.gig?.assignedFreelancer?.name || 'Loading...'}</p><p className="text-xs text-gray-500">{disputeDetails?.gig?.assignedFreelancer?.email}</p></div>
-                                </div>
-                            </div>
-                            
-                            {/* Right: Chat History Evidence */}
-                            <div className="w-2/3 bg-white p-6 overflow-y-auto">
-                                <h3 className="font-bold text-gray-400 uppercase tracking-widest text-[10px] mb-4">Chat History Evidence</h3>
-                                {!disputeDetails ? (<div className="flex justify-center mt-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>) : disputeDetails.messages.length === 0 ? (<p className="text-center text-gray-400 italic mt-10">No messages found between users.</p>) : (
-                                    <div className="space-y-4">
-                                        {disputeDetails.messages.map((msg, i) => (
-                                            <div key={i} className={`p-4 rounded-2xl max-w-[80%] ${String(msg.senderId || msg.sender) === String(disputeDetails.gig.client._id) ? 'bg-blue-50 border border-blue-100 self-start mr-auto' : 'bg-purple-50 border border-purple-100 self-end ml-auto'}`}>
-                                                <p className="text-[10px] font-black uppercase text-gray-400 mb-1">{msg.senderName || 'User'}</p>
-                                                <p className="text-sm text-gray-800 font-medium">{msg.text}</p>
-                                                <p className="text-[9px] text-gray-400 mt-2 text-right">{new Date(msg.timestamp).toLocaleString()}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        
-                        <div className="p-5 border-t border-gray-200 bg-gray-50 flex justify-end gap-4 shrink-0">
-                            <button onClick={() => executeResolution('refund_client')} className="bg-white border-2 border-orange-200 text-orange-600 font-black py-3 px-6 rounded-xl hover:bg-orange-50 transition-all shadow-sm">Refund Client</button>
-                            <button onClick={() => executeResolution('release_funds')} className="bg-green-600 text-white font-black py-3 px-6 rounded-xl hover:bg-green-700 transition-all shadow-md">Release to Freelancer</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <DisputeResolutionModal disputeGig={disputeGig} disputeDetails={disputeDetails} setDisputeGig={setDisputeGig} executeResolution={executeResolution} />
 
             {/* --- NEW: SYSTEM EMAIL MODAL --- */}
-            {emailModalUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-slide-up border border-gray-100">
-                        <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                            <div>
-                                <h3 className="font-extrabold text-xl text-gray-800">Send System Email</h3>
-                                <p className="text-xs text-gray-500 font-bold mt-1">To: {emailModalUser.email}</p>
-                            </div>
-                            <button onClick={() => setEmailModalUser(null)} className="text-gray-400 hover:text-red-500 text-2xl font-bold bg-white w-8 h-8 rounded-full shadow-sm flex items-center justify-center border border-gray-200">✕</button>
-                        </div>
-                        <form onSubmit={handleSendEmail} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-2">Subject</label>
-                                <select value={emailSubject} onChange={e => setEmailSubject(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-800 appearance-none cursor-pointer">
-                                    <option value="Account Notice: Action Required">Account Notice: Action Required</option>
-                                    <option value="⚠️ Warning: Suspicious Activity Detected">⚠️ Warning: Suspicious Activity Detected</option>
-                                    <option value="GigConnect Platform Update">GigConnect Platform Update</option>
-                                    <option value="Trust & Safety Policy Violation">Trust & Safety Policy Violation</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-2">Message Body</label>
-                                <textarea required rows="6" value={emailMessage} onChange={e => setEmailMessage(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none text-gray-700" placeholder={`Dear ${emailModalUser.name},\n\nWrite your official message here...`}></textarea>
-                            </div>
-                            <div className="pt-2 flex gap-3">
-                                <button type="button" onClick={() => setEmailModalUser(null)} className="flex-1 bg-white border border-gray-200 text-gray-700 font-bold py-3.5 rounded-xl hover:bg-gray-50 transition-all shadow-sm">
-                                    Cancel
-                                </button>
-                                <button type="submit" disabled={isSendingEmail || !emailMessage.trim()} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md disabled:bg-gray-400 flex items-center justify-center gap-2">
-                                    {isSendingEmail ? <><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span> Sending...</> : 'Send Mail ✉️'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+                <SystemEmailModal user={emailModalUser} onClose={() => setEmailModalUser(null)} />
 
         </div>
     </div>

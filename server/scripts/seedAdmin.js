@@ -8,15 +8,14 @@ async function main() {
   const { MONGO_URI, ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_USERNAME, ADMIN_NAME, JWT_SECRET } = process.env;
   if (!MONGO_URI) throw new Error('Missing MONGO_URI');
   if (!JWT_SECRET) throw new Error('Missing JWT_SECRET');
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    throw new Error('Missing ADMIN_EMAIL or ADMIN_PASSWORD in environment variables');
+  }
 
-  const email = (ADMIN_EMAIL || 'nagart16@gmail.com').toLowerCase();
-  const password = ADMIN_PASSWORD || '123456789';
+  const email = ADMIN_EMAIL.toLowerCase();
+  const password = ADMIN_PASSWORD;
   const username = (ADMIN_USERNAME || 'admin_bhai').toLowerCase();
   const name = ADMIN_NAME || 'Super Admin';
-
-  if (!email || !password) {
-    throw new Error('Missing ADMIN_EMAIL or ADMIN_PASSWORD');
-  }
 
   await mongoose.connect(MONGO_URI);
 

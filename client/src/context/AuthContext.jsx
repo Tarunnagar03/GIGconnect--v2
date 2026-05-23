@@ -18,7 +18,6 @@
  */
 
 import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
-import { jwtDecode } from 'jwt-decode';
 import api from '../api';
 
 // FIX: Isko wapas export karna hoga taaki baaki saare pages crash na karein
@@ -28,32 +27,29 @@ export const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
-    const [auth, setAuth] = useState({ token: null, user: null, isAuthenticated: false });
+    const [auth, setAuth] = useState({ user: null, isAuthenticated: false });
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    const initializeAuth = useCallback(async (token) => {
+    const initializeAuth = useCallback(async () => {
         try {
-            const decoded = jwtDecode(token);
-            if (decoded.exp * 1000 < Date.now()) {
-                throw new Error("Token expired");
-            }
-            
-            // --- UPDATED: user object now includes username ---
-            const user = decoded.user;
-            setAuth({ token, user, isAuthenticated: true });
+            // SECURITY & LOOP FIX: Always verify session with backend. 
+            // Token is sent automatically via HttpOnly cookie.
+            const res = await api.get('/users/me');
+            const user = res.data;
+
+            setAuth({ user, isAuthenticated: true });
 
             if (user.role === 'Freelancer') {
                 try {
-                    const res = await api.get('/profiles/me');
-                    setProfile(res.data);
+                    const resProfile = await api.get('/profiles/me');
+                    setProfile(resProfile.data);
                 } catch {
                     setProfile(null);
                 }
             }
-        } catch {
-            localStorage.removeItem('token');
-            setAuth({ token: null, user: null, isAuthenticated: false });
+        } catch (err) {
+            setAuth({ user: null, isAuthenticated: false });
             setProfile(null);
         } finally {
             setLoading(false);
@@ -61,27 +57,23 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (token) {
-            initializeAuth(token);
-        } else {
-            setLoading(false);
-        }
+        initializeAuth();
     }, [initializeAuth]);
 
-    const login = (token) => {
-        localStorage.setItem('token', token);
+    const login = async () => {
         setLoading(true);
-        initializeAuth(token);
+        await initializeAuth();
     };
 
-    const logout = () => {
-        localStorage.removeItem('token');
-        setAuth({ token: null, user: null, isAuthenticated: false });
+    const logout = async () => {
+        try {
+            await api.post('/auth/logout'); // Backend clears the HttpOnly cookie
+        } catch (e) {}
+        setAuth({ user: null, isAuthenticated: false });
         setProfile(null);
     };
     
-    const refreshProfile = () => auth.token && initializeAuth(auth.token);
+    const refreshProfile = () => auth.isAuthenticated && initializeAuth();
 
     // --- UPDATED: Also pass setAuth to update user details ---
     const value = { auth, setAuth, profile, loading, login, logout, refreshProfile };

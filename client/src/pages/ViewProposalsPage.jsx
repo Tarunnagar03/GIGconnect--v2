@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../api';
+import { useQuery } from '@tanstack/react-query';
 
 const ViewProposalsPage = () => {
     const { gigId } = useParams();
@@ -9,31 +10,32 @@ const ViewProposalsPage = () => {
     const [gigTitle, setGigTitle] = useState('');
     const [gigStatus, setGigStatus] = useState('');
     const [gigBudget, setGigBudget] = useState(0);
-    const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [draggedItem, setDraggedItem] = useState(null);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        setError('');
-        try {
-            const gigRes = await api.get(`/gigs/${gigId}`);
-            const proposalsRes = await api.get(`/proposals/gig/${gigId}`).catch(err => { console.error(err); return { data: [] }; });
-            setGigTitle(gigRes.data.title);
-            setGigStatus(gigRes.data.status);
-            setGigBudget(gigRes.data.budget || 0);
-            setProposals(proposalsRes.data);
-        } catch (err) {
-            setError('Could not load proposals.');
-            console.error("Error fetching proposals:", err);
-        } finally {
-            setLoading(false);
-        }
-    }, [gigId]);
+    const { data, isLoading, error: queryError } = useQuery({
+        queryKey: ['viewProposals', gigId],
+        queryFn: async () => {
+            const [gigRes, proposalsRes] = await Promise.all([
+                api.get(`/gigs/${gigId}`),
+                api.get(`/proposals/gig/${gigId}`).catch(() => ({ data: [] }))
+            ]);
+            return {
+                gig: gigRes.data,
+                proposals: proposalsRes.data
+            };
+        },
+        enabled: !!gigId
+    });
 
     useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        if (data) {
+            setGigTitle(data.gig.title);
+            setGigStatus(data.gig.status);
+            setGigBudget(data.gig.budget || 0);
+            setProposals(data.proposals);
+        }
+    }, [data]);
 
     const handleAcceptProposal = async (proposalId) => {
         if (!window.confirm("Accept this proposal and assign the gig? This will reject others.")) return;
@@ -66,7 +68,13 @@ const ViewProposalsPage = () => {
         }
     };
 
-    if (loading) return <p>Loading proposals...</p>;
+    if (isLoading) {
+        return (
+            <div className="flex justify-center items-center h-[60vh] w-full">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+            </div>
+        );
+    }
 
     const isGigOpen = gigStatus === 'Open';
 
@@ -121,7 +129,7 @@ const ViewProposalsPage = () => {
             </button>
             <h1 className="text-4xl font-extrabold mb-2 text-gray-800 tracking-tight">Proposals Received</h1>
             <p className="text-lg text-gray-500 mb-8">For: <span className="font-bold text-gray-800">{gigTitle}</span></p>
-            {error && <p className="text-red-700 bg-red-50 border border-red-200 p-4 rounded-xl text-center mb-6 font-bold">{error}</p>}
+            {(error || queryError) && <p className="text-red-700 bg-red-50 border border-red-200 p-4 rounded-xl text-center mb-6 font-bold">{error || 'Could not load proposals.'}</p>}
 
             {/* --- ENTERPRISE: Kanban Pipeline Board --- */}
             <div className="flex overflow-x-auto gap-6 pb-8 snap-x scrollbar-hide">

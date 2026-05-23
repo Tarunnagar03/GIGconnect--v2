@@ -16,11 +16,13 @@
 
 const mongoose = require('mongoose');
 
+const setEmptyToNull = (v) => (v === '' ? null : v);
+
 const ProfileSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     skills: { type: [String], required: true },
     portfolio: { type: String },
-    rate: { type: Number },
+    rate: { type: Number, set: setEmptyToNull },
     bio: { type: String },
     date: { type: Date, default: Date.now },
 
@@ -38,7 +40,8 @@ const ProfileSchema = new mongoose.Schema({
 
     // Denormalized rating summary for fast filtering/sorting
     ratingAvg: { type: Number, default: 0 },
-    ratingCount: { type: Number, default: 0 }
+    ratingCount: { type: Number, default: 0 },
+    isVerified: { type: Boolean, default: false }
 });
 
 ProfileSchema.index({ geo: '2dsphere' });

@@ -14,16 +14,16 @@
  * - NEW: AI Assistant placeholder buttons
  */
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import api from '../api';
 import { formatCurrency } from '../utils/currencyFormatter';
 
 const SubmitProposalPage = () => {
     const { gigId } = useParams();
     const navigate = useNavigate();
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
 
     const [gigTitle, setGigTitle] = useState('');
     const [gigBudget, setGigBudget] = useState(0);
@@ -275,7 +275,14 @@ const SubmitProposalPage = () => {
                                     
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div className="space-y-4">
-                                            <label htmlFor="bidAmount" className="block text-sm font-black text-gray-500 uppercase tracking-wider">Your Bid Amount (₹) <span className="text-red-500">*</span></label>
+                                            <div className="flex justify-between items-end mb-1">
+                                                <label htmlFor="bidAmount" className="block text-sm font-black text-gray-500 uppercase tracking-wider">Your Bid Amount (₹) <span className="text-red-500">*</span></label>
+                                                {gigBudget > 0 && (
+                                                    <button type="button" onClick={handleAISuggestBid} disabled={isAIPricing} className="text-[10px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md">
+                                                        {isAIPricing ? <span className="animate-spin">⏳</span> : '✨'} {isAIPricing ? 'Calculating...' : 'AI Suggest Bid'}
+                                                    </button>
+                                                )}
+                                            </div>
                                             <input type="number" id="bidAmount" name="bidAmount" value={bidAmount} onChange={onChange} required min="0" step="0.01" placeholder="e.g., 5000" className="w-full p-4 text-2xl font-extrabold border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 transition-all bg-gray-50 hover:bg-white focus:bg-white text-gray-800" disabled={isSubmitting}/>
                                             
                                             {/* Dynamic Budget Feedback */}

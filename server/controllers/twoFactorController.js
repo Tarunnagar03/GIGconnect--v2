@@ -1,12 +1,12 @@
 const User = require('../models/User');
 const sendEmail = require('../utils/email');
 
-const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+const crypto = require('crypto');
 
 exports.generateEmailCode = async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
-        const code = generateCode();
+        const code = crypto.randomInt(100000, 999999).toString();
 
         user.oneTimeCode = code;
         user.oneTimeCodeExpires = Date.now() + 10 * 60 * 1000; // 10 minutes

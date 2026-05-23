@@ -5,7 +5,15 @@ const paymentRegex = /\b(paypal|venmo|cashapp|paytm|phonepe|gpay|google pay|bhim
 export const moderateHtmlText = (text) => {
     if (typeof text !== 'string') return text;
     
-    return text
+    // XSS PREVENTION: Escape raw HTML tags before adding our own safe HTML spans
+    const sanitizedText = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    return sanitizedText
         .replace(emailRegex, `<span class="bg-red-100 text-red-800 font-extrabold px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider cursor-help shadow-sm border border-red-200" title="Sharing emails is prohibited">🔒 Email Hidden</span>`)
         .replace(phoneRegex, `<span class="bg-red-100 text-red-800 font-extrabold px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider cursor-help shadow-sm border border-red-200" title="Sharing phone numbers is prohibited">🔒 Phone Hidden</span>`)
         .replace(paymentRegex, `<span class="bg-red-100 text-red-800 font-extrabold px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider cursor-help shadow-sm border border-red-200" title="External payments lead to bans">🚫 Payment Flagged</span>`);
@@ -19,6 +27,7 @@ export const formatPreviewText = (text) => {
     if (text.startsWith('[CUSTOM_OFFER]:::')) return '📄 Custom Offer sent';
     if (text.startsWith('[OFFER_ACCEPTED]:::')) return '🤝 Offer Accepted!';
     if (text.startsWith('[MEETING]:::')) return '📹 Video Interview';
+    if (text === '[DELETED]') return '🚫 This message was deleted';
 
     return text
         .replace(emailRegex, '[Email Hidden]')

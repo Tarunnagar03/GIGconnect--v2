@@ -85,7 +85,7 @@ exports.acceptProposal = async (req, res) => {
     }
 };
 
-// --- UPDATED: Reject a proposal (with mandatory reason) ---
+// Reject a proposal (with mandatory reason)
 exports.rejectProposal = async (req, res) => {
     const { proposalId } = req.params;
     const { rejectionReason } = req.body; // Get reason from request body

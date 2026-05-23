@@ -32,7 +32,7 @@ const GigSchema = new mongoose.Schema({
     },
     status: { 
         type: String, 
-        enum: ['Open', 'In Progress', 'Completed', 'Cancelled', 'Disputed'], 
+        enum: ['Open', 'In Progress', 'Completed', 'Cancelled', 'Disputed', 'Archived'], 
         default: 'Open' 
     },
     assignedFreelancer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -45,6 +45,14 @@ const GigSchema = new mongoose.Schema({
         amount: { type: Number, required: true, min: 1 },
         status: { type: String, enum: ['pending', 'paid'], default: 'pending' },
         stripePaymentIntentId: { type: String }
+    }],
+    deliverables: [{
+        text: String,
+        fileName: String,
+        fileData: String,
+        status: { type: String, enum: ['Pending Review', 'Approved', 'Revision Requested'], default: 'Pending Review' },
+        feedback: String,
+        submittedAt: { type: Date, default: Date.now }
     }],
     date: { type: Date, default: Date.now }
 });

@@ -32,17 +32,17 @@ export const SocketProvider = ({ children }) => {
 
     useEffect(() => {
         if (auth.isAuthenticated) {
-            // Attach JWT for server-side socket auth
-            socket.auth = { token: localStorage.getItem('token') };
+            // Server will authenticate via the HttpOnly cookie attached to the Socket request
 
-            // Manually connect the socket when the user is authenticated
-            socket.connect();
+            if (!socket.connected) {
+                socket.connect();
+            }
 
-            // When connected, tell the server who this user is
-            socket.on('connect', () => {
-                // Server will derive userId from socket JWT; keep event for compatibility
-                socket.emit('addUser');
-            });
+            const handleConnect = () => socket.emit('addUser');
+            if (socket.connected) {
+                handleConnect();
+            }
+            socket.on('connect', handleConnect);
 
             // Listen for the updated list of online users from the server
             socket.on('getOnlineUsers', (users) => {
@@ -51,12 +51,12 @@ export const SocketProvider = ({ children }) => {
 
             // Cleanup function to disconnect and remove listeners
             return () => {
-                socket.off('connect');
+                socket.off('connect', handleConnect);
                 socket.off('getOnlineUsers');
                 socket.disconnect();
             };
         }
-    }, [auth.isAuthenticated, auth.user?.id]);
+    }, [auth.isAuthenticated, auth.user?.id, auth.user?._id]);
 
     // Make the socket instance and the list of online users available to the whole app
     const value = { socket, onlineUsers };

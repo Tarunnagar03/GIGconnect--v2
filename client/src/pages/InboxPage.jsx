@@ -11,48 +11,38 @@
  * - Responsive design for mobile
  */
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { formatPreviewText } from '../utils/moderationEngine';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const InboxPage = () => {
-    const [conversations, setConversations] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const { onlineUsers, socket } = useSocket();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
 
-    useEffect(() => {
-        const fetchConversations = async () => {
-            try {
-                const res = await api.get('/conversations');
-                setConversations(Array.isArray(res.data) ? res.data : []);
-            } catch (err) {
-                console.error('Failed to fetch conversations:', err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (auth.isAuthenticated) {
-            fetchConversations();
+    const { data: conversations = [], isLoading: loading } = useQuery({
+        queryKey: ['conversations'],
+        queryFn: async () => {
+            const res = await api.get('/conversations');
+            return Array.isArray(res.data) ? res.data : [];
         }
-    }, [auth.isAuthenticated]);
+    });
 
     // Re-fetch inbox when a new message updates a conversation
     useEffect(() => {
         if (!socket || !auth.isAuthenticated) return;
         const handler = () => {
-            api.get('/conversations')
-                .then((res) => setConversations(Array.isArray(res.data) ? res.data : []))
-                .catch(() => {});
+            // Tell React Query the cached conversations are stale, triggering an automatic background refetch
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
         };
         socket.on('conversationUpdated', handler);
         return () => socket.off('conversationUpdated', handler);
-    }, [socket, auth.isAuthenticated]);
+    }, [socket, auth.isAuthenticated, queryClient]);
 
     const handleProfileClick = (e, participant) => {
         e.preventDefault(); // Prevents the outer <Link> from triggering
@@ -80,7 +70,8 @@ const InboxPage = () => {
                 {conversations.length > 0 ? (
                     <div className="flex flex-col">
                         {conversations.map(convo => {
-                            const otherParticipant = convo.participants.find(p => String(p._id) !== String(auth.user.id));
+                        const currentUserId = auth?.user?.id || auth?.user?._id;
+                        const otherParticipant = convo.participants.find(p => String(p._id) !== String(currentUserId));
                             if (!otherParticipant) return null;
 
                             const isOnline = Array.isArray(onlineUsers) && onlineUsers.includes(String(otherParticipant._id));
@@ -110,12 +101,19 @@ const InboxPage = () => {
                                                     >
                                                         {otherParticipant.name || 'Unknown User'}
                                                     </p>
-                                                    <p className="text-sm text-gray-500 truncate w-48 sm:w-64 md:w-96">
+                                                    <p className={`text-sm truncate w-48 sm:w-64 md:w-96 ${convo.unreadCount > 0 ? 'font-bold text-gray-900' : 'text-gray-500'}`}>
                                                         {convo.lastMessage ? formatPreviewText(convo.lastMessage.text) : 'No messages yet'}
                                                     </p>
                                                 </div>
                                             </div>
-                                            <p className="text-xs text-gray-400">{convo.lastMessage ? lastMessageTimestamp : ''}</p>
+                                            <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                                                <p className={`text-xs ${convo.unreadCount > 0 ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>{convo.lastMessage ? lastMessageTimestamp : ''}</p>
+                                                {convo.unreadCount > 0 && (
+                                                    <div className="bg-blue-600 text-white text-[10px] font-black h-5 min-w-[20px] px-1.5 rounded-full flex items-center justify-center shadow-sm">
+                                                        {convo.unreadCount > 99 ? '99+' : convo.unreadCount}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                 </Link>
                             );

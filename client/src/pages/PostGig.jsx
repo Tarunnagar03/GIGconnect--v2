@@ -10,6 +10,7 @@ const PostGig = () => {
     const [milestones, setMilestones] = useState([{ title: '', amount: '' }]);
     const [error, setError] = useState('');
     const [isAILoading, setIsAILoading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const onChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
     const handleListChange = (name, newList) => setFormData(prev => ({ ...prev, [name]: newList }));
@@ -54,6 +55,8 @@ const PostGig = () => {
             setError(`Milestone total (₹${totalMilestoneAmount}) must equal the Project Budget (₹${formData.budget || 0}).`);
             return;
         }
+        
+        setIsSubmitting(true);
 
         try {
             const payload = { ...formData };
@@ -64,6 +67,8 @@ const PostGig = () => {
             navigate('/dashboard');
         } catch (err) {
             setError(err.response?.data?.msg || 'Error posting gig');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -156,7 +161,9 @@ const PostGig = () => {
                         </div>
                         
                         <div className="pt-4 border-t border-gray-100">
-                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-4 px-6 rounded-xl hover:bg-blue-700 hover:-translate-y-1 transition-all shadow-md text-lg">Publish Gig</button>
+                            <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-bold py-4 px-6 rounded-xl hover:bg-blue-700 hover:-translate-y-1 transition-all shadow-md text-lg disabled:bg-gray-400 disabled:cursor-not-allowed disabled:transform-none">
+                                {isSubmitting ? 'Publishing...' : 'Publish Gig'}
+                            </button>
                         </div>
                     </form>
                 </div>

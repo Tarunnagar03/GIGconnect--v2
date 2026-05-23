@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 
 const ResetPassword = () => {
     const navigate = useNavigate();
-    const location = useLocation();
-    const email = new URLSearchParams(location.search).get('email');
+    const [searchParams] = useSearchParams();
+    const email = searchParams.get('email');
 
     const [formData, setFormData] = useState({ code: '', password: '', confirmPassword: '' });
     const [error, setError] = useState('');
@@ -39,14 +39,15 @@ const ResetPassword = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
-            <div className="max-w-md w-full mx-auto">
-                <Link to="/" className="text-4xl font-bold text-center text-blue-600 mb-6 block">GigConnect</Link>
-                <div className="bg-white p-8 rounded-lg shadow-md">
-                    <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">Set New Password</h2>
+        <div className="min-h-[80vh] flex flex-col justify-center items-center p-4 animate-fade-in">
+            <div className="max-w-md w-full mx-auto relative z-10">
+                <Link to="/" className="text-4xl font-black tracking-tight text-center text-blue-600 mb-8 block">GigConnect</Link>
+                <div className="bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-gray-100">
+                    <h2 className="text-2xl font-extrabold text-center text-gray-800 mb-2">Set New Password</h2>
+                    <p className="text-center text-sm text-gray-500 mb-8 font-medium">Enter the 6-digit code sent to your email.</p>
                     
-                    {error && <p className="bg-red-100 text-red-700 p-3 rounded mb-4 text-center">{error}</p>}
-                    {success && <p className="bg-green-100 text-green-700 p-3 rounded mb-4 text-center">{success}</p>}
+                    {error && <p className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6 text-center font-bold text-sm shadow-sm">{error}</p>}
+                    {success && <p className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-xl mb-6 text-center font-bold text-sm shadow-sm">{success}</p>}
 
                     {!success && (
                         <form onSubmit={handleSubmit} className="space-y-5">
@@ -55,7 +56,7 @@ const ResetPassword = () => {
                                 <input 
                                     id="code" type="text" name="code"
                                     value={code} onChange={onChange} required 
-                                    className="w-full p-3 border rounded-md" placeholder="Check your email"
+                                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50 focus:bg-white text-center font-mono font-bold tracking-widest text-lg" placeholder="------" maxLength="6"
                                 />
                             </div>
                             <div>
@@ -63,7 +64,7 @@ const ResetPassword = () => {
                                 <input 
                                     id="password" type="password" name="password"
                                     value={password} onChange={onChange} required 
-                                    className="w-full p-3 border rounded-md" placeholder="••••••••"
+                                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50 focus:bg-white" placeholder="••••••••" minLength="6"
                                 />
                             </div>
                             <div>
@@ -71,14 +72,17 @@ const ResetPassword = () => {
                                 <input 
                                     id="confirmPassword" type="password" name="confirmPassword"
                                     value={confirmPassword} onChange={onChange} required 
-                                    className="w-full p-3 border rounded-md" placeholder="••••••••"
+                                    className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50 focus:bg-white" placeholder="••••••••" minLength="6"
                                 />
                             </div>
-                            <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white p-3 rounded-md hover:bg-blue-700 font-bold disabled:bg-gray-400">
-                                {isSubmitting ? 'Saving...' : 'Save New Password'}
+                            <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 hover:-translate-y-1 transition-all shadow-md font-bold disabled:bg-gray-400 disabled:transform-none mt-2">
+                                {isSubmitting ? <span className="flex items-center justify-center gap-2"><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span> Saving...</span> : 'Save New Password'}
                             </button>
                         </form>
                     )}
+                </div>
+                <div className="text-center mt-6">
+                    <Link to="/" className="text-sm font-bold text-gray-500 hover:text-blue-600 transition-colors">Return to Login</Link>
                 </div>
             </div>
         </div>

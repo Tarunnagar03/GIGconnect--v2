@@ -14,7 +14,7 @@
  * - NEW: Integrated Focus Mode for deep work
  */
 
-import React, { useContext, useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -23,17 +23,23 @@ import api from '../api';
 // Custom hook to handle clicks outside of a given element
 const useClickOutside = (handler) => {
     const domNode = useRef();
+    const handlerRef = useRef(handler);
+    
+    useEffect(() => {
+        handlerRef.current = handler;
+    }, [handler]);
+
     useEffect(() => {
         const maybeHandler = (event) => {
             if (domNode.current && !domNode.current.contains(event.target)) {
-                handler();
+                handlerRef.current(event);
             }
         };
         document.addEventListener('mousedown', maybeHandler);
         return () => {
             document.removeEventListener('mousedown', maybeHandler);
         };
-    });
+    }, []); // PERFORMANCE FIX: Empty array prevents re-attaching listener on every render
     return domNode;
 };
 
@@ -59,9 +65,6 @@ const NotificationBell = () => {
 
     useEffect(() => {
         fetchNotifications();
-        // Automatically check for new notifications every 15 seconds
-        const interval = setInterval(fetchNotifications, 15000);
-        return () => clearInterval(interval);
     }, [auth?.isAuthenticated]);
 
     // --- NEW: Real-time Socket.io Notification Listener ---
@@ -140,7 +143,7 @@ const Navbar = () => {
     const [projMenuOpen, setProjMenuOpen] = useState(false);
 
     const { socket } = useSocket();
-    const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+    const [unreadMessageCount, setUnreadMessageCount] = useState(0);
     const [toastMsg, setToastMsg] = useState(null);
     const [pendingCount, setPendingCount] = useState(0);
 
@@ -153,25 +156,47 @@ const Navbar = () => {
         setDropdownOpen(false);
     });
 
-    // --- NEW: Real-time Global Message Toast ---
+    // --- NEW: Fetch exact unread count from DB on mount and route changes ---
+    const fetchUnreadCount = async () => {
+        if (!auth?.isAuthenticated) return;
+        try {
+            const res = await api.get('/messages/unread-count');
+            setUnreadMessageCount(res.data.count || 0);
+        } catch (err) { console.error("Failed to fetch unread count"); }
+    };
+
+    useEffect(() => {
+        fetchUnreadCount();
+    }, [auth?.isAuthenticated, location.pathname]);
+
+    // --- NEW: Real-time Global Message Toast & Badge Counter ---
     useEffect(() => {
         if (!socket || !auth?.user) return;
+        const currentUserId = auth.user.id || auth.user._id;
         const handleConvoUpdate = (convo) => {
-            // Check if the last message is from someone else
-            if (convo.lastMessage && String(convo.lastMessage.sender) !== String(auth.user.id)) {
-                setHasUnreadMessages(true);
+            const lastMsg = convo?.lastMessage;
+            if (!lastMsg) return;
+
+            const sender = lastMsg.sender;
+            const msgSenderId = lastMsg.senderId || (typeof sender === 'object' && sender !== null ? (sender._id || sender.id) : sender);
+            
+            if (msgSenderId && String(msgSenderId) !== String(currentUserId)) {
+                // SMART LOGIC: Check if user is already inside this specific chat
+                if (location.pathname !== `/chat/${msgSenderId}`) {
+                    setUnreadMessageCount(prev => prev + 1);
                 
-                // Find sender name for the toast
-                const senderObj = convo.participants.find(p => String(p._id) !== String(auth.user.id));
-                const senderName = senderObj ? senderObj.name : 'Someone';
+                    const senderObj = convo.participants?.find(p => String(p._id) === String(msgSenderId));
+                    let senderName = lastMsg.senderName || (senderObj ? senderObj.name : 'Someone');
+                    if (senderObj?.role === 'Admin') senderName = 'GigConnect Support';
                 
-                setToastMsg(`💬 New message from ${senderName}`);
-                setTimeout(() => setToastMsg(null), 5000);
+                    setToastMsg(`💬 New message from ${senderName}`);
+                    setTimeout(() => setToastMsg(null), 5000);
+                }
             }
         };
         socket.on('conversationUpdated', handleConvoUpdate);
         return () => socket.off('conversationUpdated', handleConvoUpdate);
-    }, [socket, auth?.user]);
+    }, [socket, auth?.user, location.pathname]);
 
     // --- NEW: Fetch Pending Proposals Count for Freelancer ---
     useEffect(() => {
@@ -180,7 +205,7 @@ const Navbar = () => {
             api.get('/proposals/my-proposals')
                 .then(res => {
                     if (Array.isArray(res.data)) {
-                        setPendingCount(res.data.filter(p => p.status === 'Submitted').length);
+                        setPendingCount(res.data.filter(p => (p.status === 'Submitted' || p.status === 'Interviewing') && p.gig).length);
                     }
                 })
                 .catch(() => {});
@@ -199,22 +224,32 @@ const Navbar = () => {
     // --- ENTERPRISE ADMIN NAVBAR (God Mode) ---
     if (auth.user.role === 'Admin') {
         return (
-            <div className="bg-gradient-to-r from-gray-900 to-slate-900 border-b border-gray-800 shadow-sm sticky top-0 z-50">
+            <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
                 <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
                     <div className="flex items-center gap-8">
-                        <Link to="/admin" className="text-2xl font-extrabold tracking-tighter text-white flex items-center gap-2">
-                            GigConnect <span className="bg-red-500 text-white text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border border-red-400 ml-1 shadow-sm">Admin</span>
+                        <Link to="/admin" className="text-2xl font-extrabold tracking-tighter text-blue-600 flex items-center gap-2">
+                            GigConnect <span className="bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border border-red-200 ml-1 shadow-sm">Admin</span>
                         </Link>
                     </div>
                     <div className="flex items-center gap-4">
+                        {/* Support Inbox for Admins */}
+                        <Link to="/inbox" className="relative p-2 text-gray-600 hover:text-blue-600 transition-colors rounded-full hover:bg-gray-100" title="Support Inbox">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                            {unreadMessageCount > 0 && (
+                                <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-black rounded-full h-4 w-4 flex items-center justify-center shadow-sm border-2 border-white">
+                                    {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                                </span>
+                            )}
+                        </Link>
+
                         <div className="relative" ref={dropdownRef}>
-                            <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center gap-3 focus:outline-none bg-gray-800 hover:bg-gray-700 p-1.5 pr-4 rounded-full transition-colors border border-gray-700 shadow-inner">
+                            <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center gap-3 focus:outline-none bg-white hover:bg-gray-50 p-1.5 pr-4 rounded-full transition-colors border border-gray-200 shadow-sm">
                                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-red-500 to-orange-500 text-white flex items-center justify-center font-bold shadow-sm">
                                     {(auth.user.name || 'A').charAt(0).toUpperCase()}
                                 </div>
                                 <div className="hidden md:block text-left">
-                                    <p className="text-xs font-bold text-white leading-tight">{auth.user.name || 'Admin User'}</p>
-                                    <p className="text-[10px] text-gray-400 font-medium leading-tight">System Control</p>
+                                    <p className="text-xs font-bold text-gray-800 leading-tight">{auth.user.name || 'Admin User'}</p>
+                                    <p className="text-[10px] text-gray-500 font-medium leading-tight">System Control</p>
                                 </div>
                                 <svg className="w-4 h-4 text-gray-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                             </button>
@@ -235,7 +270,7 @@ const Navbar = () => {
     }
 
     // Update the "My Projects" link based on role
-    const myProjectsLink = auth.user.role === 'Freelancer' ? '/my-projects' : '/manage-gigs';
+    const myProjectsLink = auth.user.role === 'Freelancer' ? '/contracts' : '/manage-gigs';
 
     return (
         <>
@@ -364,6 +399,15 @@ const Navbar = () => {
                                         <p className="text-[10px] text-gray-500 font-medium">{auth.user.role === 'Freelancer' ? 'Awaiting client response' : 'Review candidates per gig'}</p>
                                     </div>
                                 </Link>
+                    {auth.user.role === 'Freelancer' && (
+                        <Link to="/my-projects" onClick={() => setProjMenuOpen(false)} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-colors group/item mt-1">
+                            <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center text-xl group-hover/item:scale-110 transition-transform shadow-sm">✅</div>
+                            <div>
+                                <p className="text-sm font-bold text-gray-800 group-hover/item:text-blue-600">Completed Projects</p>
+                                <p className="text-[10px] text-gray-500 font-medium">Your past work & reviews</p>
+                            </div>
+                        </Link>
+                    )}
                             </div>
                         </div>
                     </div>
@@ -374,10 +418,12 @@ const Navbar = () => {
                 <div className="flex items-center gap-2 sm:gap-4">
                     
                     {/* Messages Icon */}
-                    <Link to="/inbox" onClick={() => setHasUnreadMessages(false)} className={`relative p-2 transition-colors rounded-full ${isFocusMode ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'}`} title="Messages">
+                    <Link to="/inbox" className={`relative p-2 transition-colors rounded-full ${isFocusMode ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'}`} title="Messages">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
-                        {hasUnreadMessages && (
-                            <span className="absolute top-1.5 right-1.5 bg-red-500 border-2 border-white rounded-full h-3 w-3 animate-pulse shadow-sm"></span>
+                        {unreadMessageCount > 0 && (
+                            <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-black rounded-full h-4 w-4 flex items-center justify-center shadow-sm border-2 border-white">
+                                {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                            </span>
                         )}
                     </Link>
 
@@ -450,7 +496,9 @@ const Navbar = () => {
                         <Link to="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="block p-3 text-base font-semibold text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg">Dashboard</Link>
                         <Link to={auth.user.role === 'Freelancer' ? '/gigs' : '/freelancers'} onClick={() => setIsMobileMenuOpen(false)} className="block p-3 text-base font-semibold text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg">{auth.user.role === 'Freelancer' ? 'Opportunities' : 'Find Talent'}</Link>
                         <Link to={myProjectsLink} onClick={() => setIsMobileMenuOpen(false)} className="block p-3 text-base font-semibold text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg">My Projects</Link>
-                        <Link to="/inbox" onClick={() => { setIsMobileMenuOpen(false); setHasUnreadMessages(false); }} className="block p-3 text-base font-semibold text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg">Messages</Link>
+                        <Link to="/inbox" onClick={() => setIsMobileMenuOpen(false)} className="block p-3 text-base font-semibold text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg flex items-center justify-between">
+                            Messages {unreadMessageCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{unreadMessageCount}</span>}
+                        </Link>
                     </div>
                     <div className="p-4 border-t border-gray-100">
                         <button onClick={() => { setIsMobileMenuOpen(false); onLogout(); }} className="w-full text-center p-3 text-red-600 font-bold bg-red-50 rounded-lg hover:bg-red-100">Log Out</button>

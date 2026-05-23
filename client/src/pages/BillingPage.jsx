@@ -1,10 +1,10 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import api from '../api';
 
 const BillingPage = () => {
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const navigate = useNavigate();
     const isFreelancer = auth?.user?.role === 'Freelancer';
 

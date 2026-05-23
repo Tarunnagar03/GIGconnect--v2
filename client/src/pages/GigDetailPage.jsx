@@ -1,27 +1,20 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/currencyFormatter';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const GigDetailPage = () => {
     const { gigId } = useParams();
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+    const queryClient = useQueryClient();
     const queryTab = new URLSearchParams(location.search).get('tab');
-
-    const [gig, setGig] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [proposalCount, setProposalCount] = useState(0); // State to hold proposal count
-    const [mySkills, setMySkills] = useState([]);
-    const [clientReviews, setClientReviews] = useState([]);
     const [activeTab, setActiveTab] = useState(queryTab || 'overview');
     
-    // --- WORKSPACE STATE (Simulating Backend for UI Testing) ---
-    const [workspaceDeliverables, setWorkspaceDeliverables] = useState([]);
     const [deliverableText, setDeliverableText] = useState('');
     const [deliverableFile, setDeliverableFile] = useState(null);
     
@@ -29,43 +22,45 @@ const GigDetailPage = () => {
     const [isTracking, setIsTracking] = useState(false);
     const [trackedSeconds, setTrackedSeconds] = useState(0);
 
+    const currentUserId = auth.user?.id || auth.user?._id;
+
+    // --- REACT QUERY DATA FETCHING ---
+    const { data: gig, isLoading: loading, error: queryError } = useQuery({
+        queryKey: ['gig', gigId],
+        queryFn: async () => (await api.get(`/gigs/${gigId}`)).data
+    });
+
+    const isClientOwner = currentUserId === gig?.client?._id;
+
+    const { data: profileData } = useQuery({
+        queryKey: ['freelancerProfile', currentUserId],
+        queryFn: async () => (await api.get('/profiles/me')).data,
+        enabled: auth.user?.role === 'Freelancer' && !!currentUserId,
+        retry: false
+    });
+
+    const { data: proposalCount = 0 } = useQuery({
+        queryKey: ['proposalCount', gigId],
+        queryFn: async () => (await api.get(`/proposals/gig/${gigId}`)).data.length,
+        enabled: !!gig && isClientOwner
+    });
+
+    const { data: clientReviews = [] } = useQuery({
+        queryKey: ['clientReviews', gig?.client?._id],
+        queryFn: async () => (await api.get(`/reviews/client/${gig.client._id}`)).data,
+        enabled: !!gig?.client?._id
+    });
+
+    const error = queryError ? 'Gig not found or an error occurred.' : '';
+    const mySkills = profileData?.skills || [];
+    const workspaceDeliverables = gig?.deliverables ? [...gig.deliverables].sort((a,b) => new Date(b.submittedAt) - new Date(a.submittedAt)) : [];
+
     // Sync active tab state if URL changes externally
     useEffect(() => {
         if (queryTab && ['overview', 'workspace', 'payments'].includes(queryTab)) {
             setActiveTab(queryTab);
         }
     }, [queryTab]);
-
-    useEffect(() => {
-        const fetchGig = async () => {
-            try {
-                const res = await api.get(`/gigs/${gigId}`);
-                setGig(res.data);
-                // If the current user is the client, fetch proposal count
-                if (auth.user?.id === res.data.client?._id) {
-                    fetchProposalCount(gigId);
-                }
-                
-                // If user is a Freelancer, fetch their skills for matching
-                if (auth.user?.role === 'Freelancer') {
-                    const profileRes = await api.get('/profiles/me').catch(() => ({ data: null }));
-                    setMySkills(profileRes.data?.skills || []);
-                }
-
-                // Fetch Client Reviews to show in the sticky sidebar
-                if (res.data.client?._id) {
-                    const revRes = await api.get(`/reviews/client/${res.data.client._id}`).catch(() => ({ data: [] }));
-                    setClientReviews(Array.isArray(revRes.data) ? revRes.data : []);
-                }
-            } catch (err) {
-                setError('Gig not found or an error occurred.');
-                console.error("Error fetching gig details:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchGig();
-    }, [gigId, auth.user?.id]); // Rerun if user ID changes
 
     // Time Tracker Interval
     useEffect(() => {
@@ -78,21 +73,11 @@ const GigDetailPage = () => {
         return () => clearInterval(interval);
     }, [isTracking, trackedSeconds]);
 
-    // Function to fetch the number of proposals for the client
-    const fetchProposalCount = async (id) => {
-        try {
-            const res = await api.get(`/proposals/gig/${id}`);
-            setProposalCount(res.data.length);
-        } catch (err) {
-            console.error("Error fetching proposal count:", err);
-        }
-    };
-
     const handleComplete = async () => {
         if (!window.confirm("Mark this gig as complete?")) return;
         try {
             const res = await api.put(`/gigs/complete/${gigId}`);
-            setGig(res.data);
+            queryClient.setQueryData(['gig', gigId], res.data);
             alert('Gig marked as complete!');
             navigate('/dashboard');
         } catch (err) {
@@ -105,7 +90,7 @@ const GigDetailPage = () => {
         if (!window.confirm("Undo completion? This will move the gig back to 'In Progress' and allow further actions.")) return;
         try {
             const res = await api.put(`/gigs/revert-complete/${gigId}`);
-            setGig(res.data);
+            queryClient.setQueryData(['gig', gigId], res.data);
             alert('Gig reverted to In Progress!');
         } catch (err) {
             console.error(err);
@@ -194,10 +179,9 @@ const GigDetailPage = () => {
 
     const formattedDate = new Date(gig.date || gig.createdAt || Date.now()).toLocaleDateString();
 
-    const isClientOwner = auth.user?.id === gig.client?._id;
     const isFreelancer = auth.user?.role === 'Freelancer';
     const isAssignedFreelancer = isFreelancer && gig.assignedFreelancer && 
-        (gig.assignedFreelancer._id === auth.user?.id || gig.assignedFreelancer === auth.user?.id);
+        (gig.assignedFreelancer._id === currentUserId || gig.assignedFreelancer === currentUserId);
     
     const avgClientRating = clientReviews.length > 0 
         ? (clientReviews.reduce((acc, r) => acc + r.rating, 0) / clientReviews.length).toFixed(1) 
@@ -206,45 +190,82 @@ const GigDetailPage = () => {
     const lowerMySkills = Array.isArray(mySkills) ? mySkills.map(s => (s || '').toLowerCase()) : [];
 
     // --- WORKSPACE HANDLERS ---
-    const handleDeliverableSubmit = (e) => {
+    const handleDeliverableSubmit = async (e) => {
         e.preventDefault();
         if (!deliverableText.trim() && !deliverableFile) return;
         
-        const newDel = {
-            _id: Date.now(),
-            text: deliverableText,
-            fileName: deliverableFile ? deliverableFile.name : null,
-            submittedAt: new Date().toISOString(),
-            status: 'Pending Review'
-        };
-        setWorkspaceDeliverables([newDel, ...workspaceDeliverables]);
-        setDeliverableText('');
-        setDeliverableFile(null);
+        try {
+            let fileData = null;
+            let fileName = null;
+
+            if (deliverableFile) {
+                fileName = deliverableFile.name;
+                fileData = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(deliverableFile);
+                });
+            }
+
+            const res = await api.post(`/gigs/${gigId}/deliverables`, {
+                text: deliverableText,
+                fileName,
+                fileData
+            });
+
+            queryClient.setQueryData(['gig', gigId], old => ({ ...old, deliverables: res.data }));
+            setDeliverableText('');
+            setDeliverableFile(null);
+        } catch (err) {
+            console.error("Error submitting deliverable:", err);
+            alert(err.response?.data?.msg || "Failed to submit deliverable.");
+        }
     };
 
-    const handleLogTime = () => {
+    const handleLogTime = async () => {
         const hours = Math.floor(trackedSeconds / 3600);
         const minutes = Math.floor((trackedSeconds % 3600) / 60);
-        const newDel = {
-            _id: Date.now(),
-            text: `⏱️ Logged Time: ${hours}h ${minutes}m\nNote: Work session completed.`,
-            submittedAt: new Date().toISOString(),
-            status: 'Approved' // Time logs auto-approve for simplicity here
-        };
-        setWorkspaceDeliverables([newDel, ...workspaceDeliverables]);
-        setIsTracking(false);
-        setTrackedSeconds(0);
+        
+        try {
+            const createRes = await api.post(`/gigs/${gigId}/deliverables`, {
+                text: `⏱️ Logged Time: ${hours}h ${minutes}m\nNote: Work session completed.`,
+            });
+            
+            // Auto-approve the time log to authorize immediate payout
+            const newLog = createRes.data[0]; 
+            const approvedRes = await api.put(`/gigs/${gigId}/deliverables/${newLog._id}/status`, { status: 'Approved' });
+
+            queryClient.setQueryData(['gig', gigId], old => ({ ...old, deliverables: approvedRes.data }));
+            setIsTracking(false);
+            setTrackedSeconds(0);
+        } catch (err) {
+            console.error(err);
+            alert("Failed to log time.");
+        }
     };
 
-    const handleApproveWork = (id) => {
+    const handleApproveWork = async (id) => {
         if (!window.confirm("Approve this delivery? (This will authorize payment release)")) return;
-        setWorkspaceDeliverables(prev => prev.map(d => d._id === id ? {...d, status: 'Approved'} : d));
+        try {
+            const res = await api.put(`/gigs/${gigId}/deliverables/${id}/status`, { status: 'Approved' });
+            queryClient.setQueryData(['gig', gigId], old => ({ ...old, deliverables: res.data }));
+        } catch (err) {
+            console.error(err);
+            alert("Failed to approve work.");
+        }
     };
 
-    const handleRevision = (id) => {
+    const handleRevision = async (id) => {
         const reason = prompt("What needs to be changed? (Client Feedback)");
         if (reason) {
-            setWorkspaceDeliverables(prev => prev.map(d => d._id === id ? {...d, status: 'Revision Requested', feedback: reason} : d));
+            try {
+                const res = await api.put(`/gigs/${gigId}/deliverables/${id}/status`, { status: 'Revision Requested', feedback: reason });
+                queryClient.setQueryData(['gig', gigId], old => ({ ...old, deliverables: res.data }));
+            } catch (err) {
+                console.error(err);
+                alert("Failed to request revision.");
+            }
         }
     };
 
@@ -256,19 +277,20 @@ const GigDetailPage = () => {
     return (
         <div className="max-w-6xl mx-auto animate-fade-in pb-24 lg:pb-12">
             
-            {/* --- ENTERPRISE BREADCRUMBS --- */}
-            <nav className="flex items-center text-sm font-bold text-gray-400 mb-6 space-x-2 animate-fade-in uppercase tracking-wider">
-                <Link to="/dashboard" className="hover:text-blue-600 transition-colors flex items-center gap-1">
-                    <svg className="w-4 h-4 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
-                    Home
-                </Link>
-                <span>/</span>
-                <Link to={auth?.user?.role === 'Freelancer' ? '/my-projects' : '/manage-gigs'} className="hover:text-blue-600 transition-colors">
-                    Projects
-                </Link>
-                <span>/</span>
-                <span className="text-gray-800 truncate max-w-[200px] sm:max-w-md">{gig?.title || 'Details'}</span>
-            </nav>
+            {/* --- SMART BACK BUTTON --- */}
+            <button 
+                onClick={() => {
+                    if (auth?.user?.role === 'Admin') {
+                        navigate('/admin?tab=gigs'); // Admins go back to Active Escrows
+                    } else {
+                        navigate(-1); // Regular users go back normally
+                    }
+                }} 
+                className="inline-flex items-center gap-2 mb-6 text-gray-600 hover:text-blue-600 font-semibold bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow hover:border-blue-200 transition-all group"
+            >
+                <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                Back
+            </button>
 
             <div className="flex flex-col lg:flex-row gap-8">
                 
@@ -443,7 +465,21 @@ const GigDetailPage = () => {
                                                         </div>
                                                         <p className="text-gray-700 text-sm whitespace-pre-wrap leading-relaxed">{del.text}</p>
                                                         {del.fileName && (
-                                                            <div className="mt-4 flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-100 w-max pr-6 cursor-pointer hover:bg-blue-50 transition-colors">
+                                                        <div 
+                                                            className="mt-4 flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-100 w-max pr-6 cursor-pointer hover:bg-blue-50 transition-colors"
+                                                            onClick={() => {
+                                                                if (del.fileData) {
+                                                                    const a = document.createElement('a');
+                                                                    a.href = del.fileData;
+                                                                    a.download = del.fileName;
+                                                                    document.body.appendChild(a); // Required for Firefox
+                                                                    a.click();
+                                                                    document.body.removeChild(a); // Cleanup
+                                                                } else {
+                                                                    alert("File data not available");
+                                                                }
+                                                            }}
+                                                        >
                                                                 <div className="w-8 h-8 bg-white shadow-sm rounded-lg flex items-center justify-center font-bold text-blue-600">📄</div>
                                                                 <span className="text-sm font-bold text-gray-700">{del.fileName}</span>
                                                             </div>

@@ -13,15 +13,16 @@
  * - Implemented responsive design for all screen sizes
  */
 
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom'; // Import Link
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import api from '../api';
 import { Country, State, City } from 'country-state-city';
 import LandingNavbar from '../components/LandingNavbar';
 import { Link as ScrollLink } from 'react-scroll';
 import { formatCurrency } from '../utils/currencyFormatter';
 import { ChevronDownIcon, EyeIcon, EyeOffIcon } from '../components/Icons';
+import { useQuery } from '@tanstack/react-query';
 
 // --- Helper component for the placeholder sections ---
 const Section = ({ id, title, children, bg = 'bg-white' }) => (
@@ -35,19 +36,13 @@ const Section = ({ id, title, children, bg = 'bg-white' }) => (
 
 // --- New: Featured Gigs Component ---
 const FeaturedProjects = () => {
-    const [gigs, setGigs] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        api.get('/gigs/public')
-            .then(res => {
-                // Filter out "orphaned" gigs and "Archived" (Soft-Deleted) gigs by Admin
-                const validGigs = Array.isArray(res.data) ? res.data.filter(gig => gig.client && gig.status === 'Open') : [];
-                setGigs(validGigs);
-            })
-            .catch(err => console.error("Error fetching public gigs:", err))
-            .finally(() => setLoading(false));
-    }, []);
+    const { data: gigs = [], isLoading: loading } = useQuery({
+        queryKey: ['featuredGigs'],
+        queryFn: async () => {
+            const res = await api.get('/gigs/public');
+            return Array.isArray(res.data) ? res.data.filter(gig => gig.client && gig.status === 'Open') : [];
+        }
+    });
 
     if (loading) return (
         <div className="flex justify-center items-center py-12">
@@ -127,7 +122,7 @@ function HomePage() {
     const [states, setStates] = useState([]);
     const [cities, setCities] = useState([]);
     const navigate = useNavigate();
-    const { login } = useContext(AuthContext);
+    const { login } = useAuth();
 
     // --- All your existing useEffects and handlers are kept ---
     useEffect(() => { setCountries(Country.getAllCountries()); }, []);
@@ -169,7 +164,7 @@ function HomePage() {
                 setTempUserId(res.data.userId);
                 setShow2FAPrompt(true);
             } else {
-                login(res.data.token);
+                await login();
                 navigate('/dashboard');
             }
         } catch (err) {
@@ -197,7 +192,7 @@ function HomePage() {
             }
             
             const res = await api.post('/auth/register', payload);
-            login(res.data.token);
+            await login();
             navigate('/dashboard');
         } catch (err) {
             if (err.response && err.response.data && err.response.data.msg) {
@@ -213,7 +208,7 @@ function HomePage() {
         setError('');
         try {
             const res = await api.post('/auth/login/verify-2fa', { userId: tempUserId, token: twoFaCode });
-            login(res.data.token);
+            await login();
             navigate('/dashboard');
         } catch (err) {
             setError(err.response?.data?.msg || 'Invalid 2FA code.');

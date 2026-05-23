@@ -1,5 +1,6 @@
 const Contact = require('../models/Contact');
-const nodemailer = require('nodemailer');
+const User = require('../models/User');
+const sendEmail = require('../utils/email');
 
 exports.handleContactForm = async (req, res) => {
     const { name, email, subject, message } = req.body;
@@ -9,33 +10,21 @@ exports.handleContactForm = async (req, res) => {
     }
 
     try {
-        // TareeKa 1: Message ko pehle MongoDB Database mein save karein
+            // Step 1: Save the message to the MongoDB Database
         const newContact = new Contact({ name, email, subject, message });
         await newContact.save();
 
-        // Tareeka 2: Message ko Email ke through Admin ko send karein
+            // Step 2: Send the message via Email to the Admin
         if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
             try {
-                const transporter = nodemailer.createTransport({
-                    service: 'gmail',
-                    auth: {
-                        user: process.env.EMAIL_USER,
-                        pass: process.env.EMAIL_PASS
-                    }
-                });
-
-                const mailOptions = {
-                    from: process.env.EMAIL_USER,
-                    to: process.env.EMAIL_USER, // Yeh email Admin (.env wale) ko jayegi
-                    replyTo: email, // Taaki Admin direct reply kare toh user ko jaye
+                await sendEmail({
+                    email: process.env.EMAIL_USER,
                     subject: `[${subject || 'Inquiry'}] New Request from ${name} - GigConnect`,
-                    text: `You have received a new message!\n\nName: ${name}\nEmail: ${email}\nCategory: ${subject || 'General Inquiry'}\n\nMessage:\n${message || 'No message provided.'}`
-                };
-
-                await transporter.sendMail(mailOptions);
+                    html: `<h3>You have received a new message!</h3><p><b>Name:</b> ${name}<br><b>Email:</b> ${email}<br><b>Category:</b> ${subject || 'General Inquiry'}</p><p><b>Message:</b><br>${message || 'No message provided.'}</p>`
+                });
             } catch (emailErr) {
-                console.error('Email sending failed, but message saved to DB:', emailErr.message);
-                // Yahan hum error throw nahi karenge, taaki user ko success message mil sake
+                    console.error('Email sending failed, but message saved to DB:', emailErr.message);
+                    // Do not throw an error here to ensure the user receives a success message
             }
         }
 
@@ -43,6 +32,17 @@ exports.handleContactForm = async (req, res) => {
     } catch (err) {
         console.error('Contact Form Error:', err);
         res.status(500).json({ msg: 'Failed to send message. Please check server logs.' });
+    }
+};
+
+exports.getMyTickets = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        const tickets = await Contact.find({ email: user.email }).sort({ createdAt: -1 });
+        res.json(tickets);
+    } catch (err) {
+        console.error("Error fetching tickets:", err.message);
+        res.status(500).send('Server Error');
     }
 };
 

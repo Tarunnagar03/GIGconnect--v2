@@ -1,19 +1,16 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/currencyFormatter';
+import { useQuery } from '@tanstack/react-query';
 
 const MyProposalsPage = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const queryTab = new URLSearchParams(location.search).get('tab');
-
-    const [proposals, setProposals] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState(queryTab || 'All');
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
 
     useEffect(() => {
         if (queryTab && ['All', 'Pending Proposals', 'Hired', 'Rejected'].includes(queryTab)) {
@@ -21,34 +18,22 @@ const MyProposalsPage = () => {
         }
     }, [queryTab]);
 
-    useEffect(() => {
-        const fetchMyProposals = async () => {
-            if (!auth.isAuthenticated) {
-                setError('Please log in to view your proposals.');
-                setLoading(false);
-                return;
-            }
-            setLoading(true);
-            setError('');
-            try {
-                const res = await api.get('/proposals/my-proposals');
-                if (Array.isArray(res.data)) {
-                    setProposals(res.data);
-                } else {
-                    console.error("API did not return an array:", res.data);
-                    setError('Failed to load proposals. Invalid data received.');
-                    setProposals([]);
-                }
-            } catch (err) {
-                console.error("Failed to fetch proposals", err);
-                setError(err.response?.data?.msg || 'An error occurred while fetching proposals.');
-                setProposals([]);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchMyProposals();
-    }, [auth.isAuthenticated]);
+    const { data: proposals = [], isLoading: isProposalsLoading, error: queryError } = useQuery({
+        queryKey: ['myProposals'],
+        queryFn: async () => {
+            const res = await api.get('/proposals/my-proposals');
+            if (!Array.isArray(res.data)) throw new Error('Invalid data received');
+            return res.data;
+        },
+        enabled: auth.isAuthenticated
+    });
+
+    const loading = isProposalsLoading && auth.isAuthenticated;
+    const error = !auth.isAuthenticated 
+        ? 'Please log in to view your proposals.' 
+        : queryError 
+            ? (queryError.response?.data?.msg || 'An error occurred while fetching proposals.') 
+            : '';
 
     const getStatusBadge = (status) => {
         switch (status) {
@@ -67,15 +52,10 @@ const MyProposalsPage = () => {
         return proposal.status;
     };
 
-    if (loading) {
-        return <div className="text-center mt-10">Loading your proposals...</div>;
-    }
-
-    // --- NEW LOGIC: Filter proposals ---
-    const validProposals = proposals.filter(p => p.gig);
+    // --- FIX: NO HOOKS BELOW THIS LINE. ALL DATA PROCESSING DONE INLINE ---
+    const validProposals = proposals.filter(p => p && p.gig);
     const orphanedProposalCount = proposals.length - validProposals.length;
 
-    // --- Filter proposals based on active tab ---
     const filteredProposals = validProposals.filter(p => {
         const status = getEffectiveStatus(p);
         if (activeTab === 'All') return true;
@@ -86,6 +66,10 @@ const MyProposalsPage = () => {
     });
 
     const tabs = ['All', 'Pending Proposals', 'Hired', 'Rejected'];
+
+    if (loading) {
+        return <div className="text-center mt-10">Loading your proposals...</div>;
+    }
 
     return (
         <div className="max-w-5xl mx-auto animate-fade-in pb-12">
@@ -145,8 +129,8 @@ const MyProposalsPage = () => {
                                             </div>
                                     </div>
                                         <div>
-                                            <Link to={`/gigs/${p.gig._id}`} className="font-extrabold text-2xl text-gray-800 hover:text-blue-600 transition-colors block mb-2 leading-tight line-clamp-2">
-                                                {p.gig.title || 'Gig Title Missing'}
+                                            <Link to={`/gigs/${p.gig?._id || p.gig}`} className="font-extrabold text-2xl text-gray-800 hover:text-blue-600 transition-colors block mb-2 leading-tight line-clamp-2">
+                                                {p.gig?.title || 'Gig Title Missing'}
                                             </Link>
                                         </div>
                                     
@@ -159,7 +143,7 @@ const MyProposalsPage = () => {
                                                 </div>
                                                 <div className="text-right">
                                                     <p className="text-[10px] text-gray-500 uppercase font-extrabold tracking-wider mb-1">Client Budget</p>
-                                                    <p className="text-xl font-extrabold text-green-600">{formatCurrency(p.gig.budget || 0)}</p>
+                                                    <p className="text-xl font-extrabold text-green-600">{formatCurrency(p.gig?.budget || 0)}</p>
                                                 </div>
                                             </div>
                                         </div>

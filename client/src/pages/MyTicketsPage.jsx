@@ -1,30 +1,22 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
+import { useQuery } from '@tanstack/react-query';
 
 const MyTicketsPage = () => {
-    const { auth } = useContext(AuthContext);
-    const [tickets, setTickets] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    const { auth } = useAuth();
 
-    useEffect(() => {
-        const fetchTickets = async () => {
-            try {
-                const res = await api.get('/contact/my-tickets');
-                setTickets(Array.isArray(res.data) ? res.data : []);
-            } catch (err) {
-                setError('Failed to load tickets.');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (auth.isAuthenticated) {
-            fetchTickets();
-        }
-    }, [auth.isAuthenticated]);
+    const { data: tickets = [], isLoading: loading, error: queryError } = useQuery({
+        queryKey: ['myTickets'],
+        queryFn: async () => {
+            const res = await api.get('/contact/my-tickets');
+            return Array.isArray(res.data) ? res.data : [];
+        },
+        enabled: auth.isAuthenticated
+    });
+    
+    const error = queryError ? 'Failed to load tickets.' : '';
 
     if (loading) {
         return <div className="text-center mt-20 text-gray-500 font-bold animate-pulse">Loading your tickets...</div>;

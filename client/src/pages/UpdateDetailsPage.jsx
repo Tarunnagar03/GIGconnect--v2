@@ -11,25 +11,24 @@
  * - Modern profile UI
  */
 
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import api from '../api';
 import { Country, State, City } from 'country-state-city';
 import { ChevronDownIcon } from '../components/Icons';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const UpdateDetailsPage = () => {
-    const { auth, login } = useContext(AuthContext);
+    const { auth, refreshProfile } = useAuth(); // Use refreshProfile for consistency
     const [formData, setFormData] = useState({
         name: '', email: '', username: '', dob: '',
         country: '', state: '', city: '', phone: '',
         companyName: '', headline: '',
-        contactVisibility: 'Everyone',
         profileImage: ''
     });
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
     // --- State for location dropdowns ---
@@ -37,72 +36,103 @@ const UpdateDetailsPage = () => {
     const [states, setStates] = useState([]);
     const [cities, setCities] = useState([]);
 
-    // --- 1. Fetch all user data to pre-fill the form ---
+    // Initialize countries once
     useEffect(() => {
         setCountries(Country.getAllCountries());
-        api.get('/users/me')
-            .then(res => {
-                const user = res.data;
-                    let formattedDob = '';
-                    if (user.dob) {
-                        try {
-                            const dateObj = new Date(user.dob);
-                            if (!isNaN(dateObj.getTime())) {
-                                formattedDob = dateObj.toISOString().split('T')[0];
-                            }
-                        } catch (e) {}
-                    }
-                setFormData({
-                    name: user.name || '',
-                    email: user.email || '',
-                    username: user.username || '',
-                        dob: formattedDob,
-                    country: user.country || '',
-                    state: user.state || '',
-                    city: user.city || '',
-                    phone: user.phone || '',
-                    companyName: user.companyName || '',
-                    headline: user.headline || '',
-                    contactVisibility: user.contactVisibility || 'Everyone',
-                    profileImage: user.profileImage || ''
-                });
-            })
-            .catch(() => {
-                setError('Could not fetch user details.');
-            })
-            .finally(() => setLoading(false));
     }, []);
 
     // --- 2. Load states when country changes ---
     useEffect(() => {
         if (formData.country) {
             const countryInfo = Country.getCountryByCode(formData.country);
-            if (countryInfo) {
-                setStates(State.getStatesOfCountry(countryInfo.isoCode));
-            } else {
-                setStates([]);
-            }
+            setStates(countryInfo ? State.getStatesOfCountry(countryInfo.isoCode) : []);
         } else {
             setStates([]);
         }
     }, [formData.country]);
 
     // --- 3. Load cities when state changes ---
+    // Bug Fix: stateInfo was being looked up only by code. Should be `isoCode` for consistency.
     useEffect(() => {
         if (formData.country && formData.state) {
             const countryInfo = Country.getCountryByCode(formData.country);
-            if (countryInfo) {
-                const stateInfo = State.getStatesOfCountry(countryInfo.isoCode).find(s => s.isoCode === formData.state);
-                if (stateInfo) {
-                    setCities(City.getCitiesOfState(formData.country, stateInfo.isoCode));
-                } else {
-                    setCities([]);
-                }
-            }
+            const stateInfo = countryInfo ? State.getStatesOfCountry(countryInfo.isoCode).find(s => s.isoCode === formData.state) : null;
+            setCities(stateInfo ? City.getCitiesOfState(formData.country, stateInfo.isoCode) : []);
         } else {
             setCities([]);
         }
     }, [formData.country, formData.state]);
+
+    // --- 1. Fetch user data with React Query ---
+    const { data: userDetails, isLoading: isUserDetailsLoading, isError: isUserDetailsError } = useQuery({
+        queryKey: ['userDetails', auth.user?.id],
+        queryFn: async () => (await api.get('/users/me')).data,
+        enabled: !!auth.isAuthenticated
+    });
+
+    // Populate form data when user details are fetched
+    useEffect(() => {
+        if (userDetails) {
+            let formattedDob = '';
+            if (userDetails.dob) {
+                try {
+                    const dateObj = new Date(userDetails.dob);
+                    if (!isNaN(dateObj.getTime())) {
+                        formattedDob = dateObj.toISOString().split('T')[0];
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            setFormData(prev => ({
+                ...prev,
+                name: userDetails.name || '',
+                email: userDetails.email || '',
+                username: userDetails.username || '',
+                dob: formattedDob,
+                country: userDetails.country || '',
+                state: userDetails.state || '',
+                city: userDetails.city || '',
+                phone: userDetails.phone || '',
+                companyName: userDetails.companyName || '',
+                headline: userDetails.headline || '',
+                profileImage: userDetails.profileImage || '' 
+            }));
+        }
+    }, [userDetails]);
+
+    // Handle initial fetch error
+    useEffect(() => {
+        if (isUserDetailsError) {
+            setError('Could not fetch user details.');
+        }
+    }, [isUserDetailsError]);
+
+    // Form submission mutation
+    const queryClient = useQueryClient();
+    const updateDetailsMutation = useMutation({
+        mutationFn: async (payload) => (await api.put('/users/update-details', payload)).data,
+        onSuccess: () => {
+            setSuccess('Details updated successfully!');
+            refreshProfile(); // Refresh AuthContext to reflect new user details
+            queryClient.invalidateQueries(['userDetails', auth.user?.id]); // Invalidate to refetch if needed
+            setTimeout(() => navigate('/settings'), 2000);
+        },
+        onError: (err) => {
+            console.error("Update details error:", err);
+            const errData = err.response?.data;
+            let errMsg = errData?.msg || errData?.message || (errData?.errors && errData.errors[0]?.msg) || err.message || 'Failed to update details.';
+            
+            if (typeof errData === 'string' && (errData.includes('11000') || errData.toLowerCase().includes('duplicate'))) {
+                errMsg = "Duplicate Error: This Email or Username is already taken by another account.";
+            } else if (typeof errData === 'string' && errData.length < 100) {
+                errMsg += ` - ${errData}`;
+            }
+
+            if (err.response?.status === 500 && !errMsg.includes('Duplicate')) {
+                errMsg = `Server Error (500): ${errMsg}`;
+            }
+            setError(errMsg);
+        }
+    });
 
     const onChange = (e) => {
         const { name, value } = e.target;
@@ -110,7 +140,7 @@ const UpdateDetailsPage = () => {
             const newData = { ...prev, [name]: value };
             if (name === 'country') { newData.state = ''; newData.city = ''; }
             if (name === 'state') { newData.city = ''; }
-            return newData;
+            return { ...newData, contactVisibility: userDetails?.contactVisibility || 'Everyone' }; // Keep contactVisibility
         });
     };
 
@@ -118,7 +148,7 @@ const UpdateDetailsPage = () => {
     const handleImageChange = (e) => {
         const file = e.target.files[0];
         if (file) {
-            if (file.size > 2 * 1024 * 1024) { // 2MB limit
+            if (file.size > 2 * 1024 * 1024) { // Max 2MB for base64 image over API
                 setError('Image size should be less than 2MB.');
                 return;
             }
@@ -134,52 +164,33 @@ const UpdateDetailsPage = () => {
         e.preventDefault();
         setError('');
         setSuccess('');
-        try {
-            const payload = { ...formData };
-            
-            // Remove fields that are not applicable to the user's role
-            if (auth.user?.role !== 'Freelancer') delete payload.headline;
-            if (auth.user?.role !== 'Client') delete payload.companyName;
-            
-            // Deep clean: Remove any empty strings to prevent MongoDB CastErrors (Status 500)
-            Object.keys(payload).forEach(key => {
-                if (payload[key] === '' || payload[key] === null || payload[key] === undefined) {
-                    delete payload[key];
-                }
-            });
 
-            const res = await api.put('/users/update-details', payload);
-            // Check if backend returned a token before updating context. 
-            // If it's undefined, login() will crash jwtDecode and trigger the catch block.
-            if (res.data && res.data.token) {
-                login(res.data.token); 
-            }
-            setSuccess('Details updated successfully!');
-            setTimeout(() => navigate('/settings'), 2000);
-        } catch (err) {
-            console.error("Update details error:", err);
-            console.error("Full backend response:", err.response?.data);
-            const errData = err.response?.data;
-            let errMsg = errData?.msg || errData?.message || (errData?.errors && errData.errors[0]?.msg) || err.message || 'Failed to update details.';
-            
-            if (typeof errData === 'string' && (errData.includes('11000') || errData.toLowerCase().includes('duplicate'))) {
-                errMsg = "Duplicate Error: This Email or Username is already taken by another account.";
-            } else if (typeof errData === 'string' && errData.length < 100) {
-                errMsg += ` - ${errData}`;
-            }
+        if (updateDetailsMutation.isPending) return; // Prevent double submission
 
-            if (err.response?.status === 500 && !errMsg.includes('Duplicate')) {
-                // FIX: Show the ACTUAL backend error instead of a hardcoded misleading message
-                errMsg = `Server Error (500): ${errMsg}`;
-            }
+        const payload = { ...formData };
             
-            setError(errMsg);
-        }
+        // Remove fields that are not applicable to the user's role
+        if (auth.user?.role !== 'Freelancer') delete payload.headline;
+        if (auth.user?.role !== 'Client') delete payload.companyName;
 
+        updateDetailsMutation.mutate(payload);
     };
 
-    if (loading) {
-        return <p>Loading details...</p>;
+    // Display initial loading or error states
+    if (isUserDetailsLoading) {
+        return (
+            <div className="flex justify-center items-center h-[60vh] w-full">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+            </div>
+        );
+    }
+
+    if (isUserDetailsError && !error) {
+        return (
+            <div className="flex justify-center items-center h-[60vh] w-full text-red-600 font-bold">
+                Failed to load user details. Please try refreshing the page.
+            </div>
+        );
     }
 
     return (

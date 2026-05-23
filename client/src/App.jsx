@@ -16,63 +16,63 @@
  * - Admin: Admin Dashboard with user management
  */
 
-import React, { useContext } from 'react';
-// --- Router is NOT imported here ---
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 import Navbar from './components/Navbar';
-import HomePage from './pages/HomePage';
-import Dashboard from './pages/Dashboard';
-import CreateProfile from './pages/CreateProfile';
-import PostGig from './pages/PostGig';
-import BrowseGigs from './pages/BrowseGigs';
-import GigDetailPage from './pages/GigDetailPage';
-import ChatPage from './pages/ChatPage';
-import InboxPage from './pages/InboxPage';
-import SettingsPage from './pages/SettingsPage';
-import BillingPage from './pages/BillingPage';
-import SecurityPage from './pages/SecurityPage';
-import DeleteAccountPage from './pages/DeleteAccountPage';
-import ChangePasswordPage from './pages/ChangePasswordPage';
-import TwoFactorAuthPage from './pages/TwoFactorAuthPage';
-import FreelancerProfilePage from './pages/FreelancerProfilePage';
-import PaymentPage from './pages/PaymentPage';
-import UpdateDetailsPage from './pages/UpdateDetailsPage';
-import TransactionHistory from './pages/TransactionHistory';
-import SubmitProposalPage from './pages/SubmitProposalPage';
-import ViewProposalsPage from './pages/ViewProposalsPage';
-import MyProposalsPage from './pages/MyProposalsPage';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import ServicesPage from './pages/ServicesPage';
-import ContactPage from './pages/ContactPage';
-import FindFreelancers from './pages/FindFreelancers.jsx';
-import AdminDashboard from './pages/AdminDashboard.jsx';
-
-// --- NEW: Global Error Boundary ---
 import ErrorBoundary from './components/ErrorBoundary';
-
-// --- ALL IMPORTS ARE CORRECTED ---
-import TeamAgencyPage from './pages/TeamAgencyPage';
-import ManageGigsPage from './pages/ManageGigsPage';
-import MyCompletedProjectsPage from './pages/MyCompletedProjectsPage';
-import AboutMePage from './pages/AboutMePage';
-import ClientProjectsPage from './pages/ClientProjectsPage';
-import ClientProfilePage from './pages/ClientProfilePage';
-import HelpPage from './pages/HelpPage';
-
-// --- NEW: Chatbot and MyTickets ---
 import Chatbot from './components/Chatbot';
-import MyTicketsPage from './pages/MyTicketsPage';
+
+// Lazy-loaded Pages for Code Splitting (This prevents the white screen crash!)
+const HomePage = lazy(() => import('./pages/HomePage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const CreateProfile = lazy(() => import('./pages/CreateProfile'));
+const PostGig = lazy(() => import('./pages/PostGig'));
+const BrowseGigs = lazy(() => import('./pages/BrowseGigs'));
+const GigDetailPage = lazy(() => import('./pages/GigDetailPage'));
+const ChatPage = lazy(() => import('./pages/ChatPage'));
+const InboxPage = lazy(() => import('./pages/InboxPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const BillingPage = lazy(() => import('./pages/BillingPage'));
+const SecurityPage = lazy(() => import('./pages/SecurityPage'));
+const DeleteAccountPage = lazy(() => import('./pages/DeleteAccountPage'));
+const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage'));
+const TwoFactorAuthPage = lazy(() => import('./pages/TwoFactorAuthPage'));
+const FreelancerProfilePage = lazy(() => import('./pages/FreelancerProfilePage'));
+const PaymentPage = lazy(() => import('./pages/PaymentPage'));
+const UpdateDetailsPage = lazy(() => import('./pages/UpdateDetailsPage'));
+const TransactionHistory = lazy(() => import('./pages/TransactionHistory'));
+const SubmitProposalPage = lazy(() => import('./pages/SubmitProposalPage'));
+const ViewProposalsPage = lazy(() => import('./pages/ViewProposalsPage'));
+const MyProposalsPage = lazy(() => import('./pages/MyProposalsPage'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const ServicesPage = lazy(() => import('./pages/ServicesPage'));
+const ContactPage = lazy(() => import('./pages/ContactPage'));
+const FindFreelancers = lazy(() => import('./pages/FindFreelancers'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const TeamAgencyPage = lazy(() => import('./pages/TeamAgencyPage'));
+const ManageGigsPage = lazy(() => import('./pages/ManageGigsPage'));
+const MyCompletedProjectsPage = lazy(() => import('./pages/MyCompletedProjectsPage'));
+const AboutMePage = lazy(() => import('./pages/AboutMePage'));
+const ClientProjectsPage = lazy(() => import('./pages/ClientProjectsPage'));
+const ClientProfilePage = lazy(() => import('./pages/ClientProfilePage'));
+const HelpPage = lazy(() => import('./pages/HelpPage'));
+const MyTicketsPage = lazy(() => import('./pages/MyTicketsPage'));
+const ContractsPage = lazy(() => import('./pages/ContractsPage'));
 
 // Helper component to redirect if logged in
 const AuthRedirect = ({ children }) => {
   const { auth } = useAuth();
   
   // Wait for auth verification to complete before making redirect decisions
-  if (auth?.loading) return null;
+  if (auth?.loading) return (
+      <div className="flex justify-center items-center h-screen w-full bg-slate-50">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+  );
   
   if (auth.isAuthenticated) {
       if (auth.user?.role === 'Admin') {
@@ -97,8 +97,12 @@ function App() {
                 </ErrorBoundary>
             )}
             <main className={!isAdminPage ? "container mx-auto px-4 py-6" : ""}>
-                {/* key={location.pathname} ensures the error resets if user navigates away from the crashed page */}
-                <ErrorBoundary componentName="Main Content Area" key={location.pathname}>
+                <ErrorBoundary componentName="Main Content Area">
+                <Suspense fallback={
+                    <div className="flex justify-center items-center h-[60vh] w-full">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                    </div>
+                }>
                 <Routes>
                     <Route 
                         path="/" 
@@ -131,9 +135,13 @@ function App() {
                     <Route path="/submit-proposal/:gigId" element={<PrivateRoute><SubmitProposalPage /></PrivateRoute>} />
                     <Route path="/view-proposals/:gigId" element={<PrivateRoute><ViewProposalsPage /></PrivateRoute>} />
                     <Route path="/my-proposals" element={<PrivateRoute><MyProposalsPage /></PrivateRoute>} />
+                    <Route path="/contracts" element={<PrivateRoute><ContractsPage /></PrivateRoute>} />
                     <Route path="/services" element={<PrivateRoute><ServicesPage /></PrivateRoute>} />
                     <Route path="/freelancers" element={<PrivateRoute><FindFreelancers /></PrivateRoute>} />
-                    <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+                    <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>}>
+                        <Route path="gigs/:gigId" element={<GigDetailPage />} />
+                        <Route path="chat/:recipientId" element={<ChatPage />} />
+                    </Route>
                     
                     {/* --- ALL PROJECT ROUTES --- */}
                     <Route path="/my-projects" element={<PrivateRoute><MyCompletedProjectsPage /></PrivateRoute>} />
@@ -148,6 +156,7 @@ function App() {
 
                     <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
+                </Suspense>
                 </ErrorBoundary>
             </main>
             

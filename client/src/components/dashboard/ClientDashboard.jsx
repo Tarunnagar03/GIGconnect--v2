@@ -13,39 +13,34 @@
  * - Enhanced review functionality with better visual feedback
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api';
 import ReviewForm from '../ReviewForm';
-import ReviewCard from '../ReviewCard'; // <-- IMPORT THE DISPLAY CARD
 import ErrorBoundary from '../ErrorBoundary';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const ClientDashboard = () => {
-    const [myGigs, setMyGigs] = useState([]);
-    const [myReviews, setMyReviews] = useState([]); // <-- NEW: State for reviews
-    const [loading, setLoading] = useState(true);
-    const [reviewingGigId, setReviewingGigId] = useState(null);
+    const [reviewingData, setReviewingData] = useState(null); // { gigId, initialReview }
+    const queryClient = useQueryClient();
 
-    // Fetch both gigs and reviews
-    const fetchDashboardData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const gigsRes = await api.get('/gigs/my-gigs').catch(err => { console.error(err); return { data: [] }; });
-            const reviewsRes = await api.get('/reviews/me/my-reviews').catch(err => { console.error(err); return { data: [] }; });
-            
-            setMyGigs(Array.isArray(gigsRes.data) ? gigsRes.data.filter(Boolean) : []);
-            setMyReviews(Array.isArray(reviewsRes.data) ? reviewsRes.data.filter(Boolean) : []);
-
-        } catch (err) {
-            console.error("Error fetching dashboard data:", err);
-        } finally {
-            setLoading(false);
+    const { data: myGigs = [], isLoading: isGigsLoading } = useQuery({
+        queryKey: ['clientGigs'],
+        queryFn: async () => {
+            const res = await api.get('/gigs/my-gigs');
+            return Array.isArray(res.data) ? res.data.filter(Boolean) : [];
         }
-    }, []);
+    });
 
-    useEffect(() => {
-        fetchDashboardData();
-    }, [fetchDashboardData]);
+    const { data: myReviews = [], isLoading: isReviewsLoading } = useQuery({
+        queryKey: ['clientReviews'],
+        queryFn: async () => {
+            const res = await api.get('/reviews/me/my-reviews');
+            return Array.isArray(res.data) ? res.data.filter(Boolean) : [];
+        }
+    });
+
+    const loading = isGigsLoading || isReviewsLoading;
 
     const openGigsCount = myGigs.filter(gig => gig.status === 'Open').length;
     const inProgressGigsCount = myGigs.filter(gig => gig.status === 'In Progress').length;
@@ -57,8 +52,9 @@ const ClientDashboard = () => {
 
     const handleReviewSuccess = () => {
         alert('Review submitted successfully!');
-        setReviewingGigId(null);
-        fetchDashboardData(); // Re-fetch all data to show the new review
+        setReviewingData(null);
+        queryClient.invalidateQueries({ queryKey: ['clientGigs'] });
+        queryClient.invalidateQueries({ queryKey: ['clientReviews'] });
     };
 
     return (
@@ -198,10 +194,11 @@ const ClientDashboard = () => {
             </div>
 
             {/* Review Form Modal */}
-            {reviewingGigId && (
+            {reviewingData && (
                 <ReviewForm
-                    gigId={reviewingGigId}
-                    onClose={() => setReviewingGigId(null)}
+                    gigId={reviewingData.gigId}
+                    initialReview={reviewingData.initialReview}
+                    onClose={() => setReviewingData(null)}
                     onSubmitSuccess={handleReviewSuccess}
                 />
             )}

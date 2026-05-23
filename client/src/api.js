@@ -7,25 +7,21 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-});
-
-// Interceptor to add the token to every request
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
+  withCredentials: true,
 });
 
 // Global Response Interceptor for handling expired tokens
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
-      console.warn("Session expired or unauthorized. Redirecting to login.");
-      localStorage.removeItem('token');
-      window.location.href = '/'; // Direct user to the HomePage for login
+    const isUnauthorized = error.response && error.response.status === 401;
+    const isSuspended = error.response && error.response.status === 403 && error.response.data?.msg?.includes('suspended');
+    
+    if (isUnauthorized || isSuspended) {
+      console.warn("Session expired, unauthorized, or suspended. Redirecting to login.");
+      if (window.location.pathname !== '/') {
+        window.location.href = '/'; // Direct user to the HomePage for login
+      }
     }
     return Promise.reject(error);
   }

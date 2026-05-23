@@ -68,33 +68,39 @@ const TwoFactorAuthPage = () => {
     };
 
     return (
-        <div>
-            <Link to="/settings/security" className="inline-flex items-center gap-2 mb-6 text-gray-600 hover:text-blue-600 font-semibold bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow hover:border-blue-200 transition-all group">
+        <div className="max-w-2xl mx-auto animate-fade-in">
+            <Link to="/settings/security" className="inline-flex items-center gap-2 mb-6 text-gray-600 hover:text-blue-600 font-semibold bg-white border border-gray-200 px-5 py-2.5 rounded-full shadow-sm hover:shadow hover:border-blue-200 transition-all group">
                 <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                 Back to Security
             </Link>
-            <div className="bg-white p-8 rounded-lg shadow-md">
-                <h1 className="text-2xl font-bold mb-4">Two-Factor Authentication (2FA)</h1>
-                {error && <p className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</p>}
-                {message && <p className="bg-blue-100 text-blue-700 p-3 rounded mb-4">{message}</p>}
+            
+            <h1 className="text-4xl font-extrabold mb-8 text-gray-800 tracking-tight">Two-Factor Authentication</h1>
+            
+            <div className="bg-white p-8 md:p-10 rounded-3xl shadow-lg border border-gray-100">
+                {error && <p className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6 text-center font-bold shadow-sm">{error}</p>}
+                {message && <p className="bg-blue-50 border border-blue-200 text-blue-700 p-4 rounded-xl mb-6 text-center font-bold shadow-sm">{message}</p>}
 
                 {is2FAEnabled ? (
-                    <div>
-                        <p className="text-green-600 font-semibold mb-4">2FA is currently enabled on your account.</p>
-                        <button onClick={handleDisable} className="w-full bg-red-600 text-white font-bold py-2 px-4 rounded hover:bg-red-700">Disable 2FA</button>
+                    <div className="bg-green-50 border border-green-200 p-8 rounded-2xl text-center">
+                        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-sm border border-green-200">🛡️</div>
+                        <h2 className="text-xl font-extrabold text-green-800 mb-2">2FA is Enabled</h2>
+                        <p className="text-green-700 font-medium mb-8">Your account is protected with an extra layer of security.</p>
+                        <button onClick={handleDisable} className="w-full sm:w-auto px-10 bg-white border-2 border-red-200 text-red-600 font-bold py-3.5 rounded-xl hover:bg-red-50 hover:border-red-300 transition-all shadow-sm">Disable 2FA</button>
                     </div>
                 ) : (
-                    <div>
-                        <p className="text-gray-600 mb-4">Add an extra layer of security. We will email you a verification code at login.</p>
-                        <button onClick={handleSendCode} className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700">Enable 2FA via Email</button>
+                    <div className="bg-gray-50 border border-gray-200 p-8 rounded-2xl text-center">
+                        <div className="w-16 h-16 bg-white border border-gray-200 text-gray-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-sm">🔓</div>
+                        <h2 className="text-xl font-extrabold text-gray-800 mb-2">2FA is Disabled</h2>
+                        <p className="text-gray-600 mb-8 font-medium max-w-md mx-auto">Add an extra layer of security. We will email you a secure verification code every time you log in.</p>
+                        <button onClick={handleSendCode} className="w-full bg-blue-600 text-white font-bold py-4 px-6 rounded-xl hover:bg-blue-700 hover:-translate-y-1 transition-all shadow-md text-lg">Enable 2FA via Email</button>
                     </div>
                 )}
 
                 {showVerifyForm && (
-                     <form onSubmit={handleVerifyCode} className="mt-6 border-t pt-6">
-                        <label htmlFor="2fa-token" className="block text-gray-700 font-bold mb-2">Enter the 6-digit code from your email</label>
-                        <input id="2fa-token" type="text" value={twoFaToken} onChange={(e) => setTwoFaToken(e.target.value)} placeholder="123456" required className="w-full p-2 border rounded-md" />
-                        <button type="submit" className="w-full bg-green-500 text-white p-2 rounded mt-4 hover:bg-green-600">Verify & Enable</button>
+                     <form onSubmit={handleVerifyCode} className="mt-8 border-t border-gray-100 pt-8 animate-fade-in">
+                        <label htmlFor="2fa-token" className="block text-sm font-bold text-gray-700 mb-3 text-center">Enter the 6-digit code from your email</label>
+                        <input id="2fa-token" type="text" value={twoFaToken} onChange={(e) => setTwoFaToken(e.target.value)} placeholder="------" maxLength="6" required className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50 focus:bg-white text-center font-mono font-bold tracking-widest text-2xl mb-6" />
+                        <button type="submit" className="w-full bg-green-600 text-white font-bold py-4 px-6 rounded-xl hover:bg-green-700 hover:-translate-y-1 transition-all shadow-md text-lg">Verify & Enable</button>
                     </form>
                 )}
             </div>

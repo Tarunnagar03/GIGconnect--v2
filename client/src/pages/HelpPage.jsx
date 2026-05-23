@@ -23,17 +23,17 @@ const FAQItem = ({ question, answer }) => {
     );
 };
 
+// DUMMY DATA FOR NOW (Moved outside component to prevent re-allocation on renders)
+const dummyFAQs = [
+    { q: "How does the payment system work?", a: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat." },
+    { q: "How do I create a new gig or post a job?", a: "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum." },
+    { q: "What is the fee structure for freelancers?", a: "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo." },
+    { q: "How do I resolve a dispute with a client?", a: "Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet." },
+    { q: "Can I change my username later?", a: "At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident." }
+];
+
 const HelpPage = () => {
     const navigate = useNavigate();
-
-    // DUMMY DATA FOR NOW
-    const dummyFAQs = [
-        { q: "How does the payment system work?", a: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat." },
-        { q: "How do I create a new gig or post a job?", a: "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum." },
-        { q: "What is the fee structure for freelancers?", a: "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo." },
-        { q: "How do I resolve a dispute with a client?", a: "Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet." },
-        { q: "Can I change my username later?", a: "At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident." }
-    ];
 
     return (
         <div className="max-w-4xl mx-auto animate-fade-in pb-12">
@@ -69,7 +69,7 @@ const HelpPage = () => {
             <div className="bg-blue-50 border border-blue-100 rounded-3xl p-10 text-center shadow-sm">
                 <h3 className="text-2xl font-bold text-blue-900 mb-2">Still need help?</h3>
                 <p className="text-blue-700 mb-6 font-medium">Our support team is available 24/7 to assist you.</p>
-                <Link to="/" className="inline-block bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition-all hover:-translate-y-1 shadow-md">
+                <Link to="/contact-us" className="inline-block bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition-all hover:-translate-y-1 shadow-md">
                     Go to Contact Form
                 </Link>
             </div>

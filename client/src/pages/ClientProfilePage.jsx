@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import StarRating from '../components/StarRating';
 
 const ClientProfilePage = () => {
     const { clientId } = useParams();
     const navigate = useNavigate();
-    const { auth } = React.useContext(AuthContext);
+    const { auth } = useAuth();
     
     const [clientUser, setClientUser] = useState(null);
     const [clientProfile, setClientProfile] = useState(null);
@@ -21,41 +21,12 @@ const ClientProfilePage = () => {
             setLoading(true);
             setError('');
             try {
-                
-                // Fetch the client's extended profile (Bio, Website, etc.)
-                const profRes = await api.get(`/profiles/user/${clientId}`).catch(() => ({ data: null }));
-                setClientProfile(profRes.data);
-                
-                
-                // Safely filter gigs belonging to this client
-                const gigsRes = await api.get(`/gigs`).catch(() => ({ data: [] })); // Fallback to all gigs, we'll filter below
-                const allGigs = Array.isArray(gigsRes.data) ? gigsRes.data : [];
-                const thisClientGigs = allGigs.filter(g => g.client?._id === clientId || g.client === clientId);
-                setClientGigs(thisClientGigs);
-
-                // Smart Fallback Logic: Try to get user details directly
-                let userData = null;
-                try {
-                    const userRes = await api.get(`/users/${clientId}`);
-                    userData = userRes.data;
-                } catch (err) {
-                    // Fallback 1: Extract from populated profile
-                    if (profRes.data?.user && profRes.data.user.name) {
-                        userData = profRes.data.user;
-                    } 
-                    // Fallback 2: Extract from a populated gig
-                    else if (thisClientGigs.length > 0 && thisClientGigs[0].client?.name) {
-                        userData = thisClientGigs[0].client;
-                    } else {
-                        // Ultimate fallback if nothing is found
-                        userData = { name: 'Unknown Client', createdAt: new Date() };
-                    }
-                }
-                setClientUser(userData);
-                
-                // Fetch real reviews written by freelancers for this client
-                const reviewsRes = await api.get(`/reviews/client/${clientId}`).catch(() => ({ data: [] }));
-                setReviews(Array.isArray(reviewsRes.data) ? reviewsRes.data : []);
+                // PERFORMANCE FIX: Prevented fetching all 10,000+ gigs. Single aggregated backend call.
+                const res = await api.get(`/aggregated/client-profile/${clientId}`);
+                setClientProfile(res.data.profile);
+                setClientUser(res.data.user || { name: 'Unknown Client', createdAt: new Date() });
+                setClientGigs(res.data.gigs || []);
+                setReviews(res.data.reviews || []);
             } catch (err) {
                 console.error("Error fetching client profile:", err);
                 setError('Could not load client profile.');

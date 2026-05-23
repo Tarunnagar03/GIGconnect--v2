@@ -10,7 +10,9 @@ const {
     assignFreelancer, 
     completeGig,
     getMyAssignedGigs,
-    revertCompleteGig
+    revertCompleteGig,
+    submitDeliverable,
+    updateDeliverableStatus
 } = require('../controllers/gigController');
 const auth = require('../middleware/auth');
 
@@ -57,5 +59,13 @@ router.put('/complete/:gigId', auth, completeGig);
 // @route  PUT api/gigs/revert-complete/:gigId
 // @desc   Revert a completed gig back to In Progress
 router.put('/revert-complete/:gigId', auth, revertCompleteGig);
+
+// @route  POST api/gigs/:gigId/deliverables
+// @desc   Submit a workspace deliverable
+router.post('/:gigId/deliverables', auth, submitDeliverable);
+
+// @route  PUT api/gigs/:gigId/deliverables/:deliverableId
+// @desc   Update deliverable status (approve/reject)
+router.put('/:gigId/deliverables/:deliverableId', auth, updateDeliverableStatus);
 
 module.exports = router;

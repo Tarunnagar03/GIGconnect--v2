@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { getServiceTheme, getRelatedSkills } from '../utils/serviceHelpers';
 import StarRating from '../components/StarRating';
 import { EducationSection, InfoSection as ProfileSectionList, getRichPortfolio } from '../components/SharedProfileComponents';
+import { useQuery } from '@tanstack/react-query';
 
 const ProfilePageSkeleton = () => (
     <div className="max-w-4xl mx-auto animate-pulse">
@@ -42,31 +43,27 @@ const ProfilePageSkeleton = () => (
 const FreelancerProfilePage = () => {
     const { freelancerId } = useParams();
     const navigate = useNavigate();
-    const { auth } = React.useContext(AuthContext);
-    const [profile, setProfile] = useState(null);
-    const [reviews, setReviews] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    const { auth } = useAuth();
     const [orderingPkg, setOrderingPkg] = useState(null);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            setError('');
+    const { data: profile, isLoading: isProfileLoading, error: profileError } = useQuery({
+        queryKey: ['freelancerProfile', freelancerId],
+        queryFn: async () => (await api.get(`/profiles/user/${freelancerId}`)).data,
+        retry: false
+    });
+
+    const { data: reviews = [], isLoading: isReviewsLoading } = useQuery({
+        queryKey: ['freelancerReviews', freelancerId],
+        queryFn: async () => {
             try {
-                const profileRes = await api.get(`/profiles/user/${freelancerId}`);
-                const reviewsRes = await api.get(`/reviews/${freelancerId}`).catch(err => { console.error(err); return { data: [] }; });
-                setProfile(profileRes.data);
-                setReviews(reviewsRes.data);
-            } catch (err) {
-                console.error("Error fetching freelancer data:", err);
-                setError('Could not load freelancer profile.');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
-    }, [freelancerId]);
+                const res = await api.get(`/reviews/${freelancerId}`);
+                return Array.isArray(res.data) ? res.data : [];
+            } catch (err) { return []; }
+        }
+    });
+
+    const loading = isProfileLoading || isReviewsLoading;
+    const error = profileError ? 'Could not load freelancer profile.' : '';
 
     const avgRating = reviews.length > 0 ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length : 0;
 

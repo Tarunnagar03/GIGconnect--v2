@@ -9,7 +9,8 @@ const ReviewSchema = new mongoose.Schema({
     rating: { type: Number, required: true, min: 1, max: 5 },
     comment: { type: String, trim: true },
     
-    isClientFeedback: { type: Boolean, default: false }
+    isClientFeedback: { type: Boolean, default: false },
+    isEdited: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Review', ReviewSchema);

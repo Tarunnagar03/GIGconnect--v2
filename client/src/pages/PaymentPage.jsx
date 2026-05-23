@@ -14,7 +14,7 @@
 import React, { useState, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import CheckoutForm from '../components/CheckoutForm';
 
@@ -23,6 +23,7 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 const PaymentPage = () => {
     const { gigId } = useParams();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [clientSecret, setClientSecret] = useState("");
     const [gig, setGig] = useState(null);
     const [milestoneIndex, setMilestoneIndex] = useState('');
@@ -38,7 +39,7 @@ const PaymentPage = () => {
                 setGig(res.data);
 
                 // Check if the selected item is already paid
-                const selectedMilestoneIndex = new URLSearchParams(window.location.search).get('milestone');
+                const selectedMilestoneIndex = searchParams.get('milestone');
                 if (selectedMilestoneIndex) {
                     setMilestoneIndex(selectedMilestoneIndex);
                     const milestone = res.data.milestones?.[Number(selectedMilestoneIndex)];

@@ -6,6 +6,8 @@ const AuditLogSchema = new mongoose.Schema({
     targetId: { type: mongoose.Schema.Types.ObjectId },
     targetModel: { type: String },
     details: { type: String },
+    ipAddress: { type: String },
+    userAgent: { type: String },
     createdAt: { type: Date, default: Date.now }
 });
 

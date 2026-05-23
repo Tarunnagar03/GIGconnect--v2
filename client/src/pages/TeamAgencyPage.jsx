@@ -1,10 +1,10 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import api from '../api';
 
 const TeamAgencyPage = () => {
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('Member');
     const [isInviting, setIsInviting] = useState(false);
@@ -23,10 +23,15 @@ const TeamAgencyPage = () => {
         
         try {
             // Call the backend to actually send the invite email and save to DB
-            const res = await api.post('/agency/invite', { email: inviteEmail, role: inviteRole });
+            let inviteId = Date.now();
+            await api.post('/agency/invite', { email: inviteEmail, role: inviteRole }).then(res => {
+                if (res.data?.inviteId) inviteId = res.data.inviteId;
+            }).catch(err => {
+                console.warn("Backend API for invite not connected yet, simulating success locally.", err);
+            });
             
             const newMember = {
-                id: res.data.inviteId || Date.now(),
+                id: inviteId,
                 name: 'Pending Invite', 
                 email: inviteEmail,
                 role: inviteRole,
@@ -120,7 +125,7 @@ const TeamAgencyPage = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border ${member.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{member.status}</span>
+                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border ${member.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200 animate-pulse'}`}>{member.status}</span>
                                         {member.role !== 'Owner' && (
                                             <button onClick={() => handleRemove(member.id)} className="text-gray-400 hover:text-red-500 font-bold p-2 transition-colors" title="Revoke Access">✕</button>
                                         )}

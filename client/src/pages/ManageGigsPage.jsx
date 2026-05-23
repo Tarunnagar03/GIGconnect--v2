@@ -1,19 +1,17 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/currencyFormatter';
+import { useQuery } from '@tanstack/react-query';
 
 const ManageGigsPage = () => {
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const queryTab = new URLSearchParams(location.search).get('tab');
 
-    const [gigs, setGigs] = useState([]);
-    const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState(queryTab || 'Open');
-    const [proposalCounts, setProposalCounts] = useState({});
 
     useEffect(() => {
         if (queryTab && ['Open', 'In Progress', 'Completed'].includes(queryTab)) {
@@ -21,34 +19,37 @@ const ManageGigsPage = () => {
         }
     }, [queryTab]);
 
-    useEffect(() => {
-        const fetchGigs = async () => {
-            if (!auth.isAuthenticated) return;
-            try {
-                const res = await api.get('/gigs/my-gigs');
-                const myGigs = Array.isArray(res.data) ? res.data : [];
-                setGigs(myGigs);
+    // 1. Fetch Gigs via React Query
+    const { data: gigs = [], isLoading: isGigsLoading } = useQuery({
+        queryKey: ['manageGigs'],
+        queryFn: async () => {
+            const res = await api.get('/gigs/my-gigs');
+            return Array.isArray(res.data) ? res.data : [];
+        },
+        enabled: auth.isAuthenticated
+    });
 
-                // Fetch real-time proposal counts for Open gigs
-                const openGigs = myGigs.filter(g => g.status === 'Open');
-                const counts = {};
-                await Promise.all(openGigs.map(async (gig) => {
-                    try {
-                        const propRes = await api.get(`/proposals/gig/${gig._id}`);
-                        counts[gig._id] = propRes.data.filter(p => p.status === 'Submitted').length;
-                    } catch (e) {
-                        counts[gig._id] = 0;
-                    }
-                }));
-                setProposalCounts(counts);
-            } catch (err) {
-                console.error('Failed to load gigs.', err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchGigs();
-    }, [auth.isAuthenticated]);
+    const openGigIds = useMemo(() => gigs.filter(g => g.status === 'Open').map(g => g._id), [gigs]);
+
+    // 2. Fetch Proposal Counts ONLY for Open Gigs, executed in parallel and cached
+    const { data: proposalCounts = {}, isLoading: isCountsLoading } = useQuery({
+        queryKey: ['proposalCounts', openGigIds],
+        queryFn: async () => {
+            const counts = {};
+            await Promise.all(openGigIds.map(async (id) => {
+                try {
+                    const propRes = await api.get(`/proposals/gig/${id}`);
+                    counts[id] = propRes.data.filter(p => p.status === 'Submitted').length;
+                } catch (e) {
+                    counts[id] = 0;
+                }
+            }));
+            return counts;
+        },
+        enabled: openGigIds.length > 0 && auth.isAuthenticated
+    });
+
+    const loading = isGigsLoading || (openGigIds.length > 0 && isCountsLoading);
 
     if (loading) {
         return <div className="text-center mt-20 text-gray-500 font-bold animate-pulse">Loading your pipeline...</div>;

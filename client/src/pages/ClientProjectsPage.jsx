@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import ReviewCard from '../components/ReviewCard'; // Use your existing ReviewCard
 import ProjectCardSkeleton from '../components/ProjectCardSkeleton';
 
@@ -9,7 +9,8 @@ const ClientProjectsPage = () => {
     const [completedGigs, setCompletedGigs] = useState([]);
     const [reviewMap, setReviewMap] = useState(new Map());
     const [loading, setLoading] = useState(true);
-    const { auth } = useContext(AuthContext);
+    const [reviewingData, setReviewingData] = useState(null); // Added state for Edit Modal
+    const { auth } = useAuth();
 
     useEffect(() => {
         if (!auth.isAuthenticated) return;
@@ -17,16 +18,19 @@ const ClientProjectsPage = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Fetch sequentially to prevent DB overload
-                const gigsRes = await api.get('/gigs/my-gigs').catch(err => { console.error(err); return { data: [] }; });
-                const reviewsRes = await api.get('/reviews/me/my-reviews').catch(err => { console.error(err); return { data: [] }; });
+                // PERFORMANCE FIX: Fetch in parallel to reduce load time
+                const [gigsRes, reviewsRes] = await Promise.all([
+                    api.get('/gigs/my-gigs').catch(err => { console.error(err); return { data: [] }; }),
+                    api.get('/reviews/me/my-reviews').catch(err => { console.error(err); return { data: [] }; })
+                ]);
 
                 // Filter for completed gigs
                 const gigsArray = Array.isArray(gigsRes.data) ? gigsRes.data : [];
                 setCompletedGigs(gigsArray.filter(gig => gig.status === 'Completed'));
 
                 // Create a map of reviews for easy lookup
-                const rMap = new Map((Array.isArray(reviewsRes.data) ? reviewsRes.data : []).map(review => [review.gig?._id || review.gig, review]));
+                // 🚨 FIX: Force String keys to prevent String vs ObjectId mismatch
+                const rMap = new Map((Array.isArray(reviewsRes.data) ? reviewsRes.data : []).map(review => [String(review.gig?._id || review.gig), review]));
                 setReviewMap(rMap);
                 
             } catch (err) {
@@ -37,6 +41,13 @@ const ClientProjectsPage = () => {
         };
         fetchData();
     }, [auth.isAuthenticated]);
+
+    const handleReviewSuccess = () => {
+        alert('Review updated successfully!');
+        setReviewingData(null);
+        // Soft-reload logic ideally should go here (using react-query), but for now page reload or state update is enough
+        window.location.reload();
+    };
 
     if (loading) {
         return (
@@ -62,7 +73,7 @@ const ClientProjectsPage = () => {
             {completedGigs.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {completedGigs.map(gig => {
-                        const review = reviewMap.get(gig._id); // Find the matching review
+                        const review = reviewMap.get(String(gig._id)); // Match against forced string
                         return (
                             <div key={gig._id} className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col">
                                 <div className="flex justify-between items-start mb-4">
@@ -77,7 +88,7 @@ const ClientProjectsPage = () => {
                                 
                                 <div className="mt-auto border-t border-gray-100 pt-4">
                                 {review ? (
-                                    <ReviewCard review={review} />
+                                    <ReviewCard review={review} onEditClick={(rev) => setReviewingData({ gigId: gig._id, initialReview: rev })} />
                                 ) : (
                                     <p className="text-gray-500 italic text-sm">You have not left a review for this gig yet.</p>
                                 )}
@@ -94,6 +105,16 @@ const ClientProjectsPage = () => {
                     <p className="text-gray-500">You have no completed gigs yet.</p>
                 </div>
             )}
+
+        {/* Review Form Modal */}
+        {reviewingData && (
+            <ReviewForm
+                gigId={reviewingData.gigId}
+                initialReview={reviewingData.initialReview}
+                onClose={() => setReviewingData(null)}
+                onSubmitSuccess={handleReviewSuccess}
+            />
+        )}
         </div>
     );
 };

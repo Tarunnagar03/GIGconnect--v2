@@ -12,15 +12,17 @@
  * - Enhanced profile display with professional design
  */
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { AuthContext } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import api from '../../api';
 import { formatCurrency } from '../../utils/currencyFormatter';
+import FreelancerKanbanColumn from './FreelancerKanbanColumn';
+import SkillVerificationModal from './SkillVerificationModal';
 import ErrorBoundary from '../ErrorBoundary';
 
 const FreelancerDashboard = () => {
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const [stats, setStats] = useState({ earnings: 0, expected: 0, activeBids: 0, successRate: 100, views: 0, withdrawn: 0 });
     const [pipelineData, setPipelineData] = useState({ pitched: [], interviewing: [], working: [], completed: [] });
     const [recommendedGigs, setRecommendedGigs] = useState([]);
@@ -30,6 +32,9 @@ const FreelancerDashboard = () => {
     
     // --- NEW: Skill Verification State ---
     const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
+    const [fetchedQuestions, setFetchedQuestions] = useState([]);
+    const [userAnswers, setUserAnswers] = useState([]);
+    const [testCompleted, setTestCompleted] = useState(false);
     const [skillTestStep, setSkillTestStep] = useState(0);
     const [skillScore, setSkillScore] = useState(0);
     const [isVerified, setIsVerified] = useState(false);
@@ -40,7 +45,8 @@ const FreelancerDashboard = () => {
             try {
                 // 1. Fetch proposals
                 const proposalsRes = await api.get('/proposals/my-proposals').catch(err => { console.error(err); return { data: [] }; });
-                const proposals = Array.isArray(proposalsRes.data) ? proposalsRes.data.filter(Boolean) : [];
+                // FIX: Filter out "orphaned" proposals where the client deleted the Gig
+                const proposals = Array.isArray(proposalsRes.data) ? proposalsRes.data.filter(p => p && p.gig) : [];
                 
                 // Split proposals into Kanban columns
                 const pitched = proposals.filter(p => p.status === 'Submitted');
@@ -52,7 +58,7 @@ const FreelancerDashboard = () => {
                 const assigned = Array.isArray(assignedGigsRes.data) ? assignedGigsRes.data.filter(Boolean) : [];
 
                 // Split assigned into Kanban columns
-                const working = assigned.filter(g => g.status === 'In Progress');
+                const working = assigned.filter(g => g.status === 'In Progress' || g.status === 'Disputed');
                 const completed = assigned.filter(g => g.status === 'Completed');
                 
                 setPipelineData({ pitched, interviewing, working, completed });
@@ -92,44 +98,13 @@ const FreelancerDashboard = () => {
                     views: profileRes.data?.profileViews || 24 // Real data mapping with fallback
                 });
 
-                // 5. Fetch AI Recommendations (Open gigs matching profile skills)
-                const rawSkills = profileRes.data?.skills;
-                const profileSkills = Array.isArray(rawSkills) ? rawSkills : (typeof rawSkills === 'string' ? rawSkills.split(',') : []);
-                
-                let gigsData = [];
+                // 5. Fetch AI Recommendations efficiently from Backend DB
                 try {
-                    const publicRes = await api.get('/gigs/public');
-                    gigsData = Array.isArray(publicRes.data) ? publicRes.data : (publicRes.data?.gigs || []);
+                    const recommendationsRes = await api.get('/gigs?recommendations=true');
+                    setRecommendedGigs(Array.isArray(recommendationsRes.data) ? recommendationsRes.data : []);
                 } catch (e) {
-                    const authRes = await api.get('/gigs?limit=50').catch(() => ({ data: [] }));
-                    gigsData = Array.isArray(authRes.data) ? authRes.data : (authRes.data?.gigs || []);
+                    console.error("Failed to load AI matches", e);
                 }
-
-                const openGigs = gigsData.filter(gig => gig && gig.status === 'Open');
-                
-                // AI Match Logic with Explanation Reason
-                const lowerMySkills = profileSkills.filter(Boolean).map(s => String(s).toLowerCase().trim());
-                const recommendations = openGigs.filter(gig => gig.client).map(gig => {
-                    const gigSkills = Array.isArray(gig.skills) ? gig.skills : (typeof gig.skills === 'string' ? gig.skills.split(',') : []);
-                    const cleanGigSkills = gigSkills.filter(Boolean).map(s => String(s).trim());
-                    const matchingSkills = cleanGigSkills.filter(s => lowerMySkills.includes(s.toLowerCase()));
-                    const matchScore = cleanGigSkills.length > 0 ? Math.round((matchingSkills.length / cleanGigSkills.length) * 100) : 0;
-                    const topSkill = matchingSkills.length > 0 ? matchingSkills[0] : (cleanGigSkills[0] || 'any skill');
-                    return { ...gig, matchScore, topSkill };
-                });
-
-                let finalRecommendations = recommendations.filter(gig => gig.matchScore > 0).sort((a, b) => b.matchScore - a.matchScore).slice(0, 3);
-
-                // Smart Fallback: If no exact skill matches are found (e.g. new user or niche skills), 
-                // show the latest open gigs so the dashboard isn't empty!
-                if (finalRecommendations.length === 0 && recommendations.length > 0) {
-                    finalRecommendations = recommendations.slice(0, 3).map(gig => ({
-                        ...gig,
-                        matchScore: Math.floor(Math.random() * (95 - 75 + 1)) + 75 // Generate an optimistic 75-95% score
-                    }));
-                }
-
-                setRecommendedGigs(finalRecommendations);
 
             } catch (err) {
                 console.error("Dashboard data fetch error:", err);
@@ -197,31 +172,37 @@ const FreelancerDashboard = () => {
         setDraggedItem(null);
     };
 
-    // --- NEW: Skill Test Logic ---
-    const skillQuestions = [
-        { q: "What does API stand for?", options: ["Application Programming Interface", "Advanced Protocol Integration", "Automated Program Interface"], ans: 0 },
-        { q: "Which of the following is a NoSQL database?", options: ["PostgreSQL", "MySQL", "MongoDB"], ans: 2 },
-        { q: "In React, what hook is used to manage state?", options: ["useEffect", "useState", "useContext"], ans: 1 }
-    ];
+    // --- SECURE: Skill Test Logic via Backend ---
+    const startSkillTest = async () => {
+        try {
+            const res = await api.get('/skills/questions');
+            setFetchedQuestions(res.data);
+            setUserAnswers([]);
+            setTestCompleted(false);
+            setSkillTestStep(0);
+            setSkillScore(0);
+            setIsSkillModalOpen(true);
+        } catch (err) {
+            console.error("Failed to fetch questions:", err);
+            alert("Could not load the skill test at this time.");
+        }
+    };
 
     const handleAnswer = async (selectedIndex) => {
-        let currentScore = skillScore;
-        if (selectedIndex === skillQuestions[skillTestStep].ans) {
-            currentScore += 1;
-            setSkillScore(currentScore);
-        }
-        if (skillTestStep < skillQuestions.length - 1) {
+        const newAnswers = [...userAnswers, selectedIndex];
+        setUserAnswers(newAnswers);
+
+        if (skillTestStep < fetchedQuestions.length - 1) {
             setSkillTestStep(prev => prev + 1);
         } else {
-            setIsVerified(true);
-            // Save the verified status to the backend profile
             try {
-                const profileRes = await api.get('/profiles/me');
-                if (profileRes.data) {
-                    await api.post('/profiles', { ...profileRes.data, isVerified: true });
-                }
+                const res = await api.post('/skills/verify', { answers: newAnswers });
+                setSkillScore(res.data.score);
+                if (res.data.passed) setIsVerified(true);
+                setTestCompleted(true);
             } catch (err) {
-                console.error("Failed to save verification status", err);
+                console.error("Failed to verify skills", err);
+                setTestCompleted(true);
             }
         }
     };
@@ -238,47 +219,6 @@ const FreelancerDashboard = () => {
     const hour = new Date().getHours();
     const greeting = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
     const firstName = (auth.user?.name || 'Freelancer').split(' ')[0];
-
-    // Kanban Board Render Helper
-    const renderKanbanColumn = (title, icon, items, isGig) => (
-        <div 
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => handleDrop(e, title)}
-            className={`bg-gray-50/80 border border-gray-200/60 rounded-3xl p-5 min-w-[280px] md:min-w-[320px] w-full flex-shrink-0 flex flex-col max-h-[500px] transition-colors ${draggedItem && !isGig && (title === 'Pitched' || title === 'Interviewing') ? 'bg-blue-50/50 border-blue-200 border-dashed' : ''}`}
-        >
-            <div className="flex justify-between items-center mb-5 px-1">
-                <h3 className="font-extrabold text-gray-800 flex items-center gap-2">{icon} {title}</h3>
-                <span className="bg-white border border-gray-200 text-gray-500 text-xs font-black px-2.5 py-1 rounded-full shadow-sm">{items.length}</span>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-                {items.length > 0 ? items.map(item => (
-                    <div 
-                        key={item._id} 
-                        draggable={!isGig} // Only proposals are draggable
-                        onDragStart={(e) => handleDragStart(e, item, isGig, title)}
-                        onDragEnd={handleDragEnd}
-                        className={`bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-1 transition-all group ${!isGig ? 'cursor-grab active:cursor-grabbing hover:border-blue-300' : ''}`}
-                    >
-                        <Link to={`/gigs/${isGig ? item._id : item.gig?._id}`} className="font-extrabold text-gray-800 group-hover:text-blue-600 transition-colors line-clamp-2 mb-3 leading-tight">
-                            {isGig ? item.title : (item.gig?.title || 'Unknown Gig')}
-                        </Link>
-                        <div className="flex justify-between items-end mt-auto">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
-                                {isGig ? 'Budget' : 'Your Bid'}
-                            </span>
-                            <span className="font-extrabold text-green-600">
-                                {formatCurrency(isGig ? item.budget : item.bidAmount)}
-                            </span>
-                        </div>
-                    </div>
-                )) : (
-                    <div className="h-28 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center text-gray-400 text-sm font-bold bg-white/50">
-                        No items yet
-                    </div>
-                )}
-            </div>
-        </div>
-    );
 
     return (
         <div className="space-y-8 animate-fade-in pb-12">
@@ -303,7 +243,7 @@ const FreelancerDashboard = () => {
                                 <div className="text-3xl mb-2">🎓</div>
                                 <h3 className="font-bold mb-1">Stand out to clients</h3>
                                 <p className="text-xs text-blue-100 mb-4">Pass the MCQ test to get the Verified Expert badge.</p>
-                                <button onClick={() => { setSkillTestStep(0); setSkillScore(0); setIsSkillModalOpen(true); }} className="w-full bg-white text-indigo-900 font-bold py-2 rounded-xl hover:bg-gray-100 transition-colors text-sm">
+                                <button onClick={startSkillTest} className="w-full bg-white text-indigo-900 font-bold py-2 rounded-xl hover:bg-gray-100 transition-colors text-sm">
                                     Take Skill Test
                                 </button>
                             </div>
@@ -386,10 +326,10 @@ const FreelancerDashboard = () => {
                         
                         {/* Horizontal Scrollable Kanban Board */}
                         <div className="flex overflow-x-auto gap-6 pb-6 pt-2 px-2 -mx-2 snap-x scrollbar-hide">
-                            {renderKanbanColumn('Pitched', '📤', pipelineData.pitched, false)}
-                            {renderKanbanColumn('Interviewing', '💬', pipelineData.interviewing, false)}
-                            {renderKanbanColumn('Working', '⚡', pipelineData.working, true)}
-                            {renderKanbanColumn('Completed', '✅', pipelineData.completed, true)}
+                            <FreelancerKanbanColumn title="Pitched" icon="📤" items={pipelineData.pitched} isGig={false} draggedItem={draggedItem} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDrop={handleDrop} />
+                            <FreelancerKanbanColumn title="Interviewing" icon="💬" items={pipelineData.interviewing} isGig={false} draggedItem={draggedItem} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDrop={handleDrop} />
+                            <FreelancerKanbanColumn title="Working" icon="⚡" items={pipelineData.working} isGig={true} draggedItem={draggedItem} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDrop={handleDrop} />
+                            <FreelancerKanbanColumn title="Completed" icon="✅" items={pipelineData.completed} isGig={true} draggedItem={draggedItem} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDrop={handleDrop} />
                         </div>
                     </div>
                 </ErrorBoundary>
@@ -448,37 +388,16 @@ const FreelancerDashboard = () => {
             </div>
 
             {/* --- Skill Verification Modal --- */}
-            {isSkillModalOpen && !isVerified && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up p-8">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="font-extrabold text-xl text-gray-800">Skill Assessment</h3>
-                            <button onClick={() => setIsSkillModalOpen(false)} className="text-gray-400 hover:text-red-500 font-bold">✕</button>
-                        </div>
-                        <div className="mb-6">
-                            <p className="text-sm font-bold text-blue-600 mb-2">Question {skillTestStep + 1} of {skillQuestions.length}</p>
-                            <p className="text-lg font-medium text-gray-800">{skillQuestions[skillTestStep].q}</p>
-                        </div>
-                        <div className="space-y-3">
-                            {skillQuestions[skillTestStep].options.map((opt, i) => (
-                                <button key={i} onClick={() => handleAnswer(i)} className="w-full text-left p-4 rounded-xl border border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all font-medium text-gray-700">
-                                    {opt}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-            {isSkillModalOpen && isVerified && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 text-center animate-slide-up">
-                        <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl">🏆</div>
-                        <h3 className="font-extrabold text-2xl text-gray-800 mb-2">You passed!</h3>
-                        <p className="text-gray-600 mb-6">You scored {skillScore}/{skillQuestions.length}. The Verified Expert badge has been added to your profile.</p>
-                        <button onClick={() => setIsSkillModalOpen(false)} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors">Awesome!</button>
-                    </div>
-                </div>
-            )}
+            <SkillVerificationModal 
+                isOpen={isSkillModalOpen} 
+                testCompleted={testCompleted} 
+                fetchedQuestions={fetchedQuestions} 
+                skillTestStep={skillTestStep} 
+                handleAnswer={handleAnswer} 
+                onClose={() => setIsSkillModalOpen(false)} 
+                isVerified={isVerified} 
+                skillScore={skillScore} 
+            />
         </div>
     );
 };

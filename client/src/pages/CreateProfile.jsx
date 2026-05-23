@@ -11,10 +11,10 @@
  * - Modern styling with custom design system
  */
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import DynamicListInput from '../components/DynamicListInput';
 import { ChevronDownIcon } from '../components/Icons';
 
@@ -111,7 +111,7 @@ const CreateProfile = () => {
     const [success, setSuccess] = useState('');
     const [isEditMode, setIsEditMode] = useState(false);
     const navigate = useNavigate();
-    const { auth, refreshProfile } = useContext(AuthContext);
+    const { auth, refreshProfile } = useAuth();
     const isClient = auth.user?.role === 'Client';
 
     // Fetch existing profile data

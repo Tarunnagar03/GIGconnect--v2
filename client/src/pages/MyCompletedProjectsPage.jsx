@@ -11,44 +11,52 @@
  * - Professional layout with modern design
  */
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import ReviewCard from '../components/ReviewCard'; // We'll use your existing component
+import ReviewForm from '../components/ReviewForm';
 import ProjectCardSkeleton from '../components/ProjectCardSkeleton';
 
 const MyCompletedProjectsPage = () => {
+    const { auth } = useAuth();
     const [completedGigs, setCompletedGigs] = useState([]);
-    const [reviews, setReviews] = useState(new Map());
+    const [reviewMap, setReviewMap] = useState(new Map());
     const [loading, setLoading] = useState(true);
-    const { auth } = useContext(AuthContext);
+    const [reviewingData, setReviewingData] = useState(null);
 
     useEffect(() => {
-        if (!auth.user) return;
+        if (!auth.isAuthenticated) return;
 
         const fetchData = async () => {
             setLoading(true);
             try {
-                const assignedGigs = await api.get('/gigs/my-assigned-gigs').catch(err => { console.error(err); return { data: [] }; });
-                const freelancerReviews = await api.get(`/reviews/${auth.user.id}`).catch(err => { console.error(err); return { data: [] }; });
+                const [gigsRes, reviewsRes] = await Promise.all([
+                    api.get('/gigs/my-assigned-gigs').catch(() => ({ data: [] })),
+                    api.get('/reviews/me/my-reviews').catch(() => ({ data: [] }))
+                ]);
 
-                // Filter for completed gigs
-                const gigsArray = Array.isArray(assignedGigs.data) ? assignedGigs.data : [];
+                const gigsArray = Array.isArray(gigsRes.data) ? gigsRes.data : [];
                 setCompletedGigs(gigsArray.filter(gig => gig.status === 'Completed'));
 
-                // Create a map of reviews for easy lookup by gig ID
-                const reviewMap = new Map((Array.isArray(freelancerReviews.data) ? freelancerReviews.data : []).map(review => [review.gig?._id || review.gig, review]));
-                setReviews(reviewMap);
-
+                const rMap = new Map((Array.isArray(reviewsRes.data) ? reviewsRes.data : []).map(review => [String(review.gig?._id || review.gig), review]));
+                setReviewMap(rMap);
+                
             } catch (err) {
-                console.error("Error fetching completed projects data:", err);
+                console.error("Error fetching completed projects:", err);
             } finally {
                 setLoading(false);
             }
         };
         fetchData();
-    }, [auth.user]);
+    }, [auth.isAuthenticated]);
+
+    const handleReviewSuccess = () => {
+        alert('Review saved successfully!');
+        setReviewingData(null);
+        window.location.reload();
+    };
 
     if (loading) {
         return (
@@ -74,7 +82,7 @@ const MyCompletedProjectsPage = () => {
             {completedGigs.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {completedGigs.map(gig => {
-                        const review = reviews.get(gig._id); // Find the matching review
+                        const review = reviewMap.get(String(gig._id)); // FIX: String cast for correct matching
                         return (
                             <div key={gig._id} className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 flex flex-col">
                                 <div className="flex justify-between items-start mb-4">
@@ -88,9 +96,14 @@ const MyCompletedProjectsPage = () => {
                                 <p className="text-xl font-bold text-gray-800 mb-6 bg-gray-50 inline-block px-4 py-2 rounded-lg self-start">₹{gig.budget}</p>
                                 <div className="mt-auto border-t border-gray-100 pt-4">
                                 {review ? (
-                                    <ReviewCard review={review} />
+                                    <ReviewCard review={review} onEditClick={(rev) => setReviewingData({ gigId: gig._id, initialReview: rev })} />
                                 ) : (
-                                    <p className="text-gray-500 italic text-sm">The client has not left a review for this gig yet.</p>
+                                    <button
+                                        onClick={() => setReviewingData({ gigId: gig._id, initialReview: null })}
+                                        className="w-full text-sm text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 border border-blue-100 hover:border-blue-600 shadow-sm"
+                                    >
+                                        ⭐ Leave a review for Client
+                                    </button>
                                 )}
                                 </div>
                             </div>
@@ -102,8 +115,19 @@ const MyCompletedProjectsPage = () => {
                     <div className="w-24 h-24 bg-blue-50 text-blue-400 rounded-full flex items-center justify-center mx-auto mb-6">
                         <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </div>
-                    <p className="text-gray-500">You have no completed gigs yet.</p>
+                    <h3 className="text-2xl font-extrabold text-gray-800 mb-2">No completed projects yet</h3>
+                    <p className="text-gray-500 font-medium">Once you successfully finish a gig, it will appear here along with your client reviews.</p>
                 </div>
+            )}
+
+            {/* Review Form Modal */}
+            {reviewingData && (
+                <ReviewForm
+                    gigId={reviewingData.gigId}
+                    initialReview={reviewingData.initialReview}
+                    onClose={() => setReviewingData(null)}
+                    onSubmitSuccess={handleReviewSuccess}
+                />
             )}
         </div>
     );

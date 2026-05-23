@@ -14,6 +14,7 @@
 
 // server/controllers/conversationController.js
 const Conversation = require('../models/Conversation');
+const Message = require('../models/Message');
 const mongoose = require('mongoose');
 
 exports.getMyConversations = async (req, res) => {
@@ -25,7 +26,7 @@ exports.getMyConversations = async (req, res) => {
         const conversations = await Conversation.find({
             participants: { $in: [myId, myObjectId] }
         })
-            .populate('participants', 'name role')
+            .populate('participants', 'name role profileImage')
             .sort({ updatedAt: -1 });
 
         // Auto-repair: if any conversation has string participants, convert to ObjectId and save.
@@ -37,7 +38,31 @@ exports.getMyConversations = async (req, res) => {
             });
         if (repairs.length) await Promise.all(repairs);
 
-        res.json(conversations);
+        // Fetch unread count for each conversation exactly like WhatsApp
+        const conversationsWithUnread = await Promise.all(
+            conversations.map(async (c) => {
+                const convoObj = c.toObject();
+                convoObj.unreadCount = await Message.countDocuments({
+                    conversationId: convoObj.roomId,
+                    sender: { $ne: myId },
+                    status: { $ne: 'read' }
+                });
+
+                // 🛡️ SECURITY & UX: Mask Admin details for regular users in their Inbox
+                if (req.user.role !== 'Admin') {
+                    convoObj.participants = convoObj.participants.map(p => {
+                        if (p.role === 'Admin') {
+                            p.name = 'GigConnect Support';
+                        }
+                        return p;
+                    });
+                }
+
+                return convoObj;
+            })
+        );
+
+        res.json(conversationsWithUnread);
     } catch (err) {
         console.error(err.message);
         res.status(500).send('Server Error');

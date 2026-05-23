@@ -11,11 +11,11 @@
  * - Enhanced responsive layout for mobile devices
  */
 
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import api from '../api';
 import GigCard from '../components/GigCard';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 const GigSkeleton = () => (
@@ -35,7 +35,7 @@ const GigSkeleton = () => (
 );
 
 const BrowseGigs = () => {
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const [gigs, setGigs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchParams, setSearchParams] = useSearchParams();
@@ -77,11 +77,14 @@ const BrowseGigs = () => {
             params.set('page', pageNum);
             params.set('limit', 12);
 
-            const gigsRes = await api.get(`/gigs?${params.toString()}`).catch(err => { console.error(err); return { data: [] }; });
-            const proposalsRes = await api.get('/proposals/my-proposals').catch(err => { console.error(err); return { data: [] }; });
-            
-            const profileRes = await api.get('/profiles/me').catch(() => ({ data: null }));
-            setMySkills(profileRes.data?.skills || []);
+            // PERFORMANCE FIX: Parallelize network requests
+            const [gigsRes, proposalsRes, profileRes] = await Promise.all([
+                api.get(`/gigs?${params.toString()}`).catch(err => { console.error(err); return { data: [] }; }),
+                api.get('/proposals/my-proposals').catch(err => { console.error(err); return { data: [] }; }),
+                api.get('/profiles/me').catch(() => ({ data: null }))
+            ]);
+
+            setMySkills(profileRes?.data?.skills || []);
 
             // Filter out "orphaned" gigs and "Archived" (Soft-Deleted) gigs by Admin
             const validGigs = Array.isArray(gigsRes.data) ? gigsRes.data.filter(gig => gig.client && gig.status === 'Open') : [];

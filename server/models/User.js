@@ -60,6 +60,11 @@ const UserSchema = new mongoose.Schema({
     resetPasswordCode: { type: String },
     resetPasswordExpires: { type: Date },
 
+    // Enterprise Feature: Device and IP Tracking
+    lastIpAddress: { type: String },
+    lastUserAgent: { type: String },
+    lastLogin: { type: Date },
+
     // Admin can soft-disable accounts (safer than delete).
     isActive: { type: Boolean, default: true }
 });

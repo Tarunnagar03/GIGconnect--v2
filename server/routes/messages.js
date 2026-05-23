@@ -18,7 +18,12 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const { getMessages, getRecipientDetails } = require('../controllers/messageController');
+const { getMessages, getRecipientDetails, getUnreadCount } = require('../controllers/messageController');
+
+// @route  GET api/messages/unread-count
+// @desc   Get the total count of unread messages for the logged-in user
+// @access Private
+router.get('/unread-count', auth, getUnreadCount);
 
 // @route  GET api/messages/user/:userId
 // @desc   Get the details (like name) of a specific user for the chat header

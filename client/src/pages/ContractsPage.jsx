@@ -1,35 +1,27 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/currencyFormatter';
+import { useQuery } from '@tanstack/react-query';
 
 const ContractsPage = () => {
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
     const navigate = useNavigate();
-    const [contracts, setContracts] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
 
-    useEffect(() => {
-        const fetchContracts = async () => {
-            if (!auth.isAuthenticated) return;
-            setLoading(true);
-            try {
-                const endpoint = auth.user.role === 'Client' ? '/gigs/my-gigs' : '/gigs/my-assigned-gigs';
-                const res = await api.get(endpoint);
-                const activeGigs = (Array.isArray(res.data) ? res.data : []).filter(
-                    g => g.status === 'In Progress' || g.status === 'Completed'
-                );
-                setContracts(activeGigs);
-            } catch (err) {
-                setError('Failed to load contracts.');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchContracts();
-    }, [auth.isAuthenticated, auth.user.role]);
+    const { data: contracts = [], isLoading: loading, error: queryError } = useQuery({
+        queryKey: ['contracts', auth.user?.role],
+        queryFn: async () => {
+            const endpoint = auth.user?.role === 'Client' ? '/gigs/my-gigs' : '/gigs/my-assigned-gigs';
+            const res = await api.get(endpoint);
+            return (Array.isArray(res.data) ? res.data : []).filter(
+                g => g.status === 'In Progress' || g.status === 'Disputed'
+            );
+        },
+        enabled: auth.isAuthenticated
+    });
+
+    const error = queryError ? 'Failed to load contracts.' : '';
 
     const generateContractPDF = (gig) => {
         const clientName = gig.client?.companyName || gig.client?.name || 'The Client';
@@ -96,7 +88,7 @@ const ContractsPage = () => {
             <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 mb-6 text-gray-600 hover:text-blue-600 font-semibold bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow transition-all group">
                 <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Back
             </button>
-            <h1 className="text-4xl font-extrabold mb-8 text-gray-800 tracking-tight">My Contracts & Agreements</h1>
+            <h1 className="text-4xl font-extrabold mb-8 text-gray-800 tracking-tight">Active Contracts</h1>
             
             {loading ? (<div className="text-center py-10"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto"></div></div>) : 
              error ? (<div className="text-red-500 text-center py-10 font-bold">{error}</div>) : 

@@ -31,11 +31,10 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const http = require('http');
 const { Server } = require('socket.io');
-const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
-
-const Message = require('./models/Message');
-const Conversation = require('./models/Conversation');
+const cookieParser = require('cookie-parser');
+const { createAdapter } = require('@socket.io/redis-adapter');
+const { createClient } = require('redis');
+const { globalLimiter, authLimiter, twoFaLimiter, paymentLimiter } = require('./middleware/rateLimiters');
 
 const app = express();
 const server = http.createServer(app);
@@ -43,158 +42,71 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: process.env.CLIENT_URL || "http://localhost:5173",
-        methods: ["GET", "POST"]
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
+// --- Redis Adapter for PM2 Cluster Scaling ---
+// Note: Requires REDIS_URL in .env and redis server running
+if (process.env.REDIS_URL) {
+    const pubClient = createClient({ url: process.env.REDIS_URL });
+    const subClient = pubClient.duplicate();
+    Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
+        io.adapter(createAdapter(pubClient, subClient));
+        console.log('🔗 Redis Adapter connected for Socket.io scaling');
+    }).catch(err => console.error('Redis connection error:', err));
+}
+
 connectDB();
 
+const allowedOrigins = [process.env.CLIENT_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'].filter(Boolean);
 app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like server-to-server or Stripe Webhooks) and allowed domains
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+
+// FIX: Prevent express.json() from breaking Stripe Webhooks (which need raw unparsed buffer)
+app.use((req, res, next) => {
+    if (req.originalUrl === '/api/payments/webhook') return next();
+    express.json({ limit: '20mb' })(req, res, next);
+});
+app.use(express.urlencoded({ limit: '20mb', extended: true }));
+app.use(cookieParser());
+
+app.use('/api', globalLimiter);
 
 // --- API Routes ---
-app.use('/api/auth', require('./routes/auth'));
+app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/profiles', require('./routes/profiles'));
 app.use('/api/gigs', require('./routes/gigs'));
 app.use('/api/conversations', require('./routes/conversations'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/reviews', require('./routes/reviews'));
-app.use('/api/2fa', require('./routes/twoFactor'));
-app.use('/api/payments', require('./routes/payments')); 
+app.use('/api/2fa', twoFaLimiter, require('./routes/twoFactor'));
+app.use('/api/payments', paymentLimiter, require('./routes/payments')); 
+app.use('/api/transactions', require('./routes/transactions')); 
 app.use('/api/proposals', require('./routes/proposals'));
-app.use('/api/contact', require('./routes/contact.js'));
+app.use('/api/contact', require('./routes/contact'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/ai', require('./routes/ai')); // Fixed rogue nested route
+app.use('/api/skills', require('./routes/skills')); // Moved Skill Verification to backend
+app.use('/api/aggregated', require('./routes/aggregated')); // Performance Optimized endpoints
 
-let onlineUsers = new Map();
 
-// Authenticate sockets via JWT (sent from client as socket.auth.token)
-io.use((socket, next) => {
-    try {
-        const token = socket.handshake?.auth?.token || socket.handshake?.headers?.authorization;
-        if (!token) return next(new Error('No auth token'));
-        const decoded = jwt.verify(token.replace(/^Bearer\s+/i, ''), process.env.JWT_SECRET);
-        socket.user = decoded.user || decoded;
-        return next();
-    } catch (err) {
-        return next(new Error('Invalid auth token'));
-    }
-});
-
-io.on('connection', (socket) => {
-    console.log('✅ A user connected:', socket.id);
-
-    // Always register the authenticated user immediately.
-    const userId = socket.user?.id;
-    if (userId) {
-        onlineUsers.set(userId, socket.id);
-        socket.join(`user:${userId}`);
-        io.emit('getOnlineUsers', Array.from(onlineUsers.keys()));
-    }
-
-    // Kept for backward compatibility with older client builds.
-    socket.on('addUser', () => {
-        const uid = socket.user?.id;
-        if (!uid) return;
-        onlineUsers.set(uid, socket.id);
-        socket.join(`user:${uid}`);
-        io.emit('getOnlineUsers', Array.from(onlineUsers.keys()));
-    });
-
-    socket.on('joinRoom', (roomName) => {
-        socket.join(roomName);
-        console.log(`User ${socket.id} joined room: ${roomName}`);
-    });
-
-    // --- THIS IS THE CORRECTED DATABASE LOGIC ---
-    socket.on('sendMessage', async ({ roomName, messageData }) => {
-        try {
-            // Basic authorization: sender must match the authenticated socket user
-            if (!socket.user?.id || messageData?.senderId !== socket.user.id) {
-                return;
-            }
-
-            // 1. Save the message to the database
-            const message = new Message({
-                conversationId: roomName,
-                sender: messageData.senderId,
-                text: messageData.text
-            });
-            await message.save();
-
-            // 2. Find or Create the conversation and update its last message
-            const participantIds = roomName.split('-');
-            const participantObjectIds = participantIds
-                .filter((id) => mongoose.Types.ObjectId.isValid(id))
-                .map((id) => new mongoose.Types.ObjectId(id));
-
-            // Upsert by roomId to avoid Mongo upsert inference issues on array queries
-            const filter = { roomId: roomName };
-
-            const update = {
-                // Always update the last message
-                $set: {
-                    lastMessage: {
-                        text: messageData.text,
-                        sender: new mongoose.Types.ObjectId(messageData.senderId),
-                        timestamp: new Date()
-                    }
-                },
-                // This ensures 'participants' is only set when creating a new document
-                $setOnInsert: {
-                    roomId: roomName,
-                    participants: participantObjectIds
-                }
-            };
-
-            const convo = await Conversation.findOneAndUpdate(filter, update, { upsert: true, new: true })
-                .populate('participants', 'name role');
-
-            // 3. Broadcast the message to all users in the private room
-            io.to(roomName).emit('receiveMessage', messageData);
-
-            // 4. Update inbox UI for both participants (even if they aren't on ChatPage)
-            if (convo) {
-                for (const participantId of participantIds) {
-                    if (!participantId) continue;
-                    io.to(`user:${participantId}`).emit('conversationUpdated', convo);
-                }
-            }
-
-        } catch (error) {
-            // This will log any database error if it happens again
-            console.error('--- CRITICAL ERROR IN sendMessage ---:', error);
-        }
-    });
-
-app.use('/api/ai', require('./routes/ai'));
-    // --- Read Receipts ---
-    socket.on('markAsRead', ({ roomName, userId }) => {
-        socket.to(roomName).emit('messagesRead', { byUserId: userId });
-    });
-
-    // --- Typing Indicators Events ---
-    socket.on('typing', ({ roomName, senderId }) => {
-        socket.to(roomName).emit('typing', { senderId });
-    });
-
-    socket.on('stopTyping', ({ roomName, senderId }) => {
-        socket.to(roomName).emit('stopTyping', { senderId });
-    });
-
-    socket.on('disconnect', () => {
-        const userId = socket.user?.id || socket.user?._id;
-        if (userId && onlineUsers.get(userId) === socket.id) {
-            onlineUsers.delete(userId);
-        }
-        io.emit('getOnlineUsers', Array.from(onlineUsers.keys()));
-        console.log('❌ User disconnected:', socket.id);
-    });
-});
+// --- Initialize Socket.IO Handlers ---
+require('./socketHandler')(io);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`✅ Server (with Socket.IO) started on port ${PORT}`));

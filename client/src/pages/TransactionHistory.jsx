@@ -1,30 +1,20 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
+import { useQuery } from '@tanstack/react-query';
 
 const TransactionHistory = () => {
-    const [transactions, setTransactions] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const { auth } = useContext(AuthContext);
+    const { auth } = useAuth();
 
-    useEffect(() => {
-        const fetchHistory = async () => {
-            try {
-                // This API endpoint was created in a previous step
-                const res = await api.get('/transactions/me');
-                setTransactions(res.data);
-            } catch (err) {
-                console.error("Error fetching transaction history", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (auth.isAuthenticated) {
-            fetchHistory();
-        }
-    }, [auth.isAuthenticated]);
+    const { data: transactions = [], isLoading: loading } = useQuery({
+        queryKey: ['transactionHistory'],
+        queryFn: async () => {
+            const res = await api.get('/transactions/me');
+            return res.data;
+        },
+        enabled: auth.isAuthenticated
+    });
 
     const formatDate = (dateString) => new Date(dateString).toLocaleString();
 
